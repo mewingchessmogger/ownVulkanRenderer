@@ -1,8 +1,13 @@
+#define VMA_IMPLEMENTATION
+#include "vk_mem_alloc.h"
+#include "glm/glm.hpp"
+
 #include <iostream>
 #include <fstream>
 #include <vulkan/vulkan.hpp>
 #include <VkBootstrap.h>
 #include <GLFW/glfw3.h>
+#include "vkutils.h"
 constexpr int NUM_OF_IMAGES = 2;
 constexpr bool bUseValidationLayers = true;
 vk::Instance _instance;		//instance for vulkan libs and that
@@ -16,11 +21,29 @@ struct queueStruct {
 	uint32_t famIndex;//fam index
 };
 
+struct allocatedBuffer{
+	vk::Buffer	buffer{};
+	VmaAllocation alloc{};
+	VmaAllocationInfo allocInfo{};
+	VmaAllocationCreateInfo allocCreateInfo{};
+};
+
+struct Vertex {
+	glm::vec3 pos;
+	glm::vec3 color;
+};
+std::vector<Vertex> vertices{
+	{{0.0f, -0.5f,0.0f}, {1.0f,0.0f,0.0f}},//pos , color
+	{{0.5f, 0.5f,0.0f}, {0.0f,1.0f,0.0f}},
+	{{-0.5f, 0.5f,0.0f}, {0.0f,0.0f,1.0f}}
+};
+
+
 queueStruct _graphicsQueue;
 
 vkb::Instance vkbInstance;
 vkb::Device vkbDevice;
-
+VmaAllocator _allocator;
 vk::SwapchainKHR _swapchain;//actually a conjoined machine using vkimages,extents and formats for img rep
 vk::Format _swapchainFormat;//format vkimages and colorspace
 std::vector<vk::Image> _swapchainImages{};//actual mem in gpu rep something
@@ -32,6 +55,7 @@ GLFWwindow* window;
 vk::CommandPool _cmdPool;
 std::vector<vk::CommandBuffer>_cmdBuffers;
 vk::Pipeline _graphicsPipeline;
+vk::PipelineLayout _layout;
 std::vector<vk::Fence> _fences{};
 std::array<vk::Semaphore, 2> _imageReadySemaphores{};
 std::array<vk::Semaphore, 2> _renderFinishedSemaphores{};
@@ -39,7 +63,10 @@ std::array<vk::Semaphore, 2> _renderFinishedSemaphores{};
 vk::ShaderModule _vertexShader;
 vk::ShaderModule _fragShader;
 
-uint32_t imageIndex{};
+allocatedBuffer _stagingBuffer;
+allocatedBuffer _vertexBuffer;
+
+;uint32_t imageIndex{};
 int currentFrame{};
 
 void initWindow() {
@@ -117,6 +144,11 @@ void initDeviceAndGPU() {
 	_graphicsQueue.famIndex = resFamilyIndex.value();
 	_chosenGPU = vk::PhysicalDevice{ physicalDevice.physical_device };
 
+	VmaAllocatorCreateInfo allocInfo{};
+	allocInfo.physicalDevice = _chosenGPU;
+	allocInfo.device = _device;
+	allocInfo.instance = _instance;
+	vmaCreateAllocator(&allocInfo, &_allocator);
 	
 
 }
@@ -169,6 +201,8 @@ void initCommandBuffers() {
 		std::cout << i << "\n";
 	}
 
+
+
 }
 
 std::vector<char> readFile(const std::string& fileName) {
@@ -215,6 +249,66 @@ void initSyncs(){
 
 }
 
+void initBuffers() {
+	auto byteSize = vertices.size() * sizeof(vertices[0]);
+
+	vk::BufferCreateInfo stagingInfo{};
+	stagingInfo
+		.setSize(byteSize)
+		.setUsage(vk::BufferUsageFlagBits::eTransferSrc);
+
+
+	vk::BufferCreateInfo dLocalInfo{};
+	dLocalInfo
+		.setSize(byteSize)
+		.setUsage(vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eVertexBuffer);
+	
+
+	_stagingBuffer.allocCreateInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_HOST; 						//keep pointer alive bit
+	_stagingBuffer.allocCreateInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+	auto result = vmaCreateBuffer(_allocator, reinterpret_cast<VkBufferCreateInfo*>(&stagingInfo) 
+				  , &_stagingBuffer.allocCreateInfo, reinterpret_cast<VkBuffer*>(&_stagingBuffer.buffer) , &_stagingBuffer.alloc,&_stagingBuffer.allocInfo);
+
+	
+	_vertexBuffer.allocCreateInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
+	_vertexBuffer.allocCreateInfo.flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT ;
+	VmaAllocation dLocalAlloc;
+	auto result2 = vmaCreateBuffer(_allocator, reinterpret_cast<VkBufferCreateInfo*>(&dLocalInfo)
+	 	, &_vertexBuffer.allocCreateInfo, reinterpret_cast<VkBuffer*>(&_vertexBuffer.buffer), &_vertexBuffer.alloc, nullptr);
+
+	if (result != VK_SUCCESS || result2 != VK_SUCCESS) {
+		throw std::runtime_error("vma alloc tweaking cuh");
+	}
+
+
+	std::memcpy(_stagingBuffer.allocInfo.pMappedData, vertices.data(), byteSize);
+	//flush it down the gpu drain so it gets visible for gpu 
+	vmaFlushAllocation(_allocator, _stagingBuffer.alloc, 0, byteSize);
+	
+	
+	
+	vk::CommandBufferBeginInfo beginInfo{};
+	beginInfo.setFlags(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
+
+	_cmdBuffers[0].begin(beginInfo);
+
+	vk::BufferCopy region{};
+	region.setSize(byteSize);
+
+	_cmdBuffers[0].copyBuffer(_stagingBuffer.buffer, _vertexBuffer.buffer, region);
+
+	_cmdBuffers[0].end();
+
+	vk::SubmitInfo info{};
+	info.setCommandBuffers(_cmdBuffers[0]);
+
+	_graphicsQueue.handle.submit(info);
+	_graphicsQueue.handle.waitIdle();
+
+	
+
+}
+
 
 
 void initGraphicsPipeline() {
@@ -242,9 +336,36 @@ void initGraphicsPipeline() {
 		.setPName("main");
 	vk::PipelineShaderStageCreateInfo shaderStages[2] = { vertexInfo,fragInfo };
 
+
+
 	vk::PipelineVertexInputStateCreateInfo vertexInputInfo{};
+	vk::VertexInputBindingDescription posBinding{};
+	vk::VertexInputBindingDescription clrBinding{};
+	vk::VertexInputAttributeDescription posAttrib{};
+	vk::VertexInputAttributeDescription clrAttrib{};
+	
+	posBinding
+		.setBinding(0)
+		.setInputRate(vk::VertexInputRate::eVertex)
+		.setStride(sizeof(vertices[0]));
 
+	posAttrib
+		.setLocation(0)
+		.setOffset(0)
+		.setBinding(0)
+		.setFormat(vk::Format::eR32G32B32Sfloat);
+	clrAttrib
+		.setLocation(1)
+		.setOffset(sizeof(vertices[0].pos))
+		.setBinding(0)
+		.setFormat(vk::Format::eR32G32B32Sfloat);
 
+	vk::VertexInputBindingDescription bindings[] = { posBinding};
+	vk::VertexInputAttributeDescription attribs[] = { posAttrib,clrAttrib };
+	
+	vertexInputInfo
+		.setVertexBindingDescriptions(bindings)
+		.setVertexAttributeDescriptions(attribs);
 
 	vk::PipelineInputAssemblyStateCreateInfo assInfo{};
 	assInfo.setTopology(vk::PrimitiveTopology::eTriangleList);
@@ -315,7 +436,7 @@ void initGraphicsPipeline() {
 
 
 	vk::PipelineLayoutCreateInfo layoutInfo{};
-	vk::PipelineLayout layout = _device.createPipelineLayout(layoutInfo);
+	_layout = _device.createPipelineLayout(layoutInfo);
 	
 
 
@@ -333,7 +454,7 @@ void initGraphicsPipeline() {
 		.setPDepthStencilState(nullptr)
 		.setPColorBlendState(&blendInfo)
 		.setPDynamicState(&dynamicState)
-		.setLayout(layout)
+		.setLayout(_layout)
 		.setBasePipelineHandle(vk::Pipeline{})
 		.setBasePipelineIndex(-1);
 			
@@ -350,80 +471,13 @@ void initComputePipeline() {
 	
 
 
-void cleanup() {
-
-
-
-	_device.waitIdle();
-	
-	
-
-	for (int i{}; i < NUM_OF_IMAGES; i++) {
-		_device.destroyFence(_fences[i]);
-		_device.destroySemaphore(_renderFinishedSemaphores[i]);
-		_device.destroySemaphore(_imageReadySemaphores[i]);
-
-	}
-
-	_device.freeCommandBuffers(_cmdPool, _cmdBuffers);
-	
-	_device.destroyCommandPool(_cmdPool);
-	for (int i{}; i < NUM_OF_IMAGES; i++) {
-		
-		_device.destroyImageView(_swapchainImageViews[i]);
-	}
-	
-	_device.destroySwapchainKHR(_swapchain); // as vkimages are owned by swapchain they are killed with it
-	_instance.destroySurfaceKHR(_surface);
-	
-	_device.destroy();
-	glfwDestroyWindow(window);
-	glfwTerminate();
-
-}
-
-void transitionImage(vk::Image image,vk::CommandBuffer cmdBuffer, vk::ImageLayout oldLayout, vk::ImageLayout newLayout) {
-
-	vk::ImageSubresourceRange subRange{};
-	subRange.setAspectMask(vk::ImageAspectFlagBits::eColor)
-			.setLayerCount(vk::RemainingArrayLayers)
-			.setBaseMipLevel(0)
-			.setLevelCount(vk::RemainingMipLevels)
-			.setBaseArrayLayer(0);
-
-
-
-
- 	vk::ImageMemoryBarrier2 barrier{};
-	barrier.setSrcStageMask(vk::PipelineStageFlagBits2::eAllCommands)
-	       .setSrcAccessMask(vk::AccessFlagBits2::eMemoryWrite)
-	       .setDstStageMask(vk::PipelineStageFlagBits2::eAllCommands)
-	       .setDstAccessMask(vk::AccessFlagBits2::eMemoryRead | vk::AccessFlagBits2::eMemoryWrite)
-	       .setImage(image)
-	       .setOldLayout(oldLayout)
-	       .setNewLayout(newLayout)
-	       .setSubresourceRange(subRange);
-	       
-	       
-
-
-	vk::DependencyInfo depInfo{};
-	depInfo.setImageMemoryBarrierCount(1).setPImageMemoryBarriers(&barrier);
-
-	cmdBuffer.pipelineBarrier2(depInfo);
-	
-	
-
-}
-
-
 void draw() {
 	static float counter{};
 	counter += 0.01;
 	
 
 	//SYNC!!!!!!!!{
-	currentFrame= (currentFrame + 1) % NUM_OF_IMAGES;
+	
 	vk::Fence curFence[] = { _fences[currentFrame] };
 
 	_device.waitForFences(1,curFence, vk::True, 1000000000);
@@ -438,7 +492,6 @@ void draw() {
 
 
 	imageIndex = _device.acquireNextImageKHR(_swapchain, 1000000000, imageReadySemaph).value;
-
 
 
 	//now were using imageindex as index, swapchainimages using it is obvious as that is the currently free from rendering
@@ -457,27 +510,13 @@ void draw() {
 
 	cmdBuffer.begin(beginInfo);
 	
-	
-	transitionImage(curImage,cmdBuffer, vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral);
-	
-	
 	vk::ClearColorValue clr{};
-	
 	clr.setFloat32({ 0.0f, 0.0f, sinf(counter), 1.0f});
 
-	vk::ImageSubresourceRange subRange{};
-	subRange.setAspectMask(vk::ImageAspectFlagBits::eColor)
-			.setLayerCount(vk::RemainingArrayLayers)
-			.setBaseMipLevel(0)
-			.setLevelCount(vk::RemainingMipLevels)
-			.setBaseArrayLayer(0);
-
-
-
-	//cmdBuffer.clearColorImage(curImage, vk::ImageLayout::eGeneral, clr,subRange);
-
-	transitionImage(curImage, cmdBuffer, vk::ImageLayout::eGeneral, vk::ImageLayout::eColorAttachmentOptimal);
+	
+	vkutils::transitionImage(curImage, cmdBuffer, vk::ImageLayout::eUndefined, vk::ImageLayout::eColorAttachmentOptimal);
 	//begin dynrendering
+
 	vk::RenderingAttachmentInfo attachInfo{};
 	attachInfo
 		.setImageView(_swapchainImageViews[imageIndex])
@@ -501,44 +540,23 @@ void draw() {
 	
 
 	cmdBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, _graphicsPipeline);
-	//setViewport(0, vk::Viewport(0.0f, 0.0f, static_cast<float>(swapChainExtent.width), static_cast<float>(swapChainExtent.height), 0.0f, 1.0f));
-	//setScissor(0, vk::Rect2D(vk::Offset2D(0, 0), swapChainExtent));
+	//cmdBuffer.bindVertexBuffers();
 	cmdBuffer.setViewport(0,vk::Viewport(0.0f,0.0f,float(_swapchainExtent.width),float(_swapchainExtent.height),0.0f,1.0f));
 	cmdBuffer.setScissor(0,vk::Rect2D(vk::Offset2D(0,0),_swapchainExtent));
+	vk::DeviceSize offset{};
+
+	cmdBuffer.bindVertexBuffers(0, _vertexBuffer.buffer,offset);
 	cmdBuffer.draw(3, 1, 0, 0);
+	
 	cmdBuffer.endRendering();
 
-	transitionImage(curImage, cmdBuffer, vk::ImageLayout::eColorAttachmentOptimal, vk::ImageLayout::ePresentSrcKHR);
+	vkutils::transitionImage(curImage, cmdBuffer, vk::ImageLayout::eColorAttachmentOptimal, vk::ImageLayout::ePresentSrcKHR);
 
 
 	cmdBuffer.end();
 	 
-	vk::SubmitInfo2 subInfo{};
-	vk::CommandBufferSubmitInfo cmdInfo{};
-	vk::SemaphoreSubmitInfo waitInfo{};
-	vk::SemaphoreSubmitInfo signalInfo{};
-
-	cmdInfo.setCommandBuffer(cmdBuffer).setDeviceMask(0);
-
-	waitInfo.setSemaphore(imageReadySemaph)
-			.setValue(1)
-			.setStageMask(vk::PipelineStageFlagBits2::eColorAttachmentOutput)
-			.setDeviceIndex(0);
-
-	signalInfo.setSemaphore(renderFinishedSemaph)
-    		  .setValue(1)
-    		  .setStageMask(vk::PipelineStageFlagBits2::eAllGraphics)
-    		  .setDeviceIndex(0);
-
-	
-	
-	subInfo.setWaitSemaphoreInfos(waitInfo)
-		   .setSignalSemaphoreInfos(signalInfo)
-		   .setCommandBufferInfos(cmdInfo);
-	
-	
-	
-	_graphicsQueue.handle.submit2(subInfo,_fences[currentFrame]);
+	vkutils::submitHelper(cmdBuffer, imageReadySemaph, renderFinishedSemaph, vk::PipelineStageFlagBits2::eColorAttachmentOutput
+		, vk::PipelineStageFlagBits2::eAllGraphics, _graphicsQueue.handle, _fences[currentFrame]);
 
 	vk::PresentInfoKHR presInfo{};
 	presInfo.setWaitSemaphores({ renderFinishedSemaph})
@@ -546,8 +564,52 @@ void draw() {
 			.setImageIndices({ imageIndex });
 	
 	_graphicsQueue.handle.presentKHR(presInfo);
-	
+
+	currentFrame = (currentFrame + 1) % NUM_OF_IMAGES;
 }
+
+void cleanup() {
+
+
+
+	_device.waitIdle();
+
+
+	_device.destroyShaderModule(_vertexShader);
+	_device.destroyShaderModule(_fragShader);
+
+
+	vmaDestroyBuffer(_allocator, _vertexBuffer.buffer, _vertexBuffer.alloc);
+	vmaDestroyBuffer(_allocator, _stagingBuffer.buffer, _stagingBuffer.alloc);
+	vmaDestroyAllocator(_allocator);
+
+	_device.destroyPipelineLayout(_layout);
+	_device.destroyPipeline(_graphicsPipeline);
+
+	for (int i{}; i < NUM_OF_IMAGES; i++) {
+		_device.destroyFence(_fences[i]);
+		_device.destroySemaphore(_renderFinishedSemaphores[i]);
+		_device.destroySemaphore(_imageReadySemaphores[i]);
+
+	}
+
+	_device.freeCommandBuffers(_cmdPool, _cmdBuffers);
+
+	_device.destroyCommandPool(_cmdPool);
+	for (int i{}; i < NUM_OF_IMAGES; i++) {
+
+		_device.destroyImageView(_swapchainImageViews[i]);
+	}
+
+	_device.destroySwapchainKHR(_swapchain); // as vkimages are owned by swapchain they are killed with it
+	_instance.destroySurfaceKHR(_surface);
+
+	_device.destroy();
+	glfwDestroyWindow(window);
+	glfwTerminate();
+
+}
+
 int main() {
 
 	//pipeline,semaphs,fences,cmdbuffer,commandpool,
@@ -559,7 +621,7 @@ int main() {
 	initCommandBuffers();
 	initSyncs();
 	initGraphicsPipeline();
-	//initComputePipeline
+	initBuffers();
 
 	while (!glfwWindowShouldClose(window)) {
 		glfwPollEvents();
