@@ -1,5 +1,8 @@
 #pragma once
-#include <vulkan/vulkan.hpp>
+#include <vulkan/vulkan_handles.hpp>
+#include <iostream>
+#include <fstream>
+
 namespace vkutils {
 
 	 void submitHelper(vk::CommandBuffer cmdBuffer, vk::Semaphore waitSemaphore, vk::Semaphore signalSemaphore,

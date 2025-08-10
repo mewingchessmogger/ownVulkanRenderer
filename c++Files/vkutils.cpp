@@ -1,6 +1,6 @@
+#include "pch.h"
+
 #include "vkutils.h"
-#include <iostream>
-#include <fstream>
 
 
 void vkutils::submitHelper(vk::CommandBuffer cmdBuffer, vk::Semaphore waitSemaphore, vk::Semaphore signalSemaphore,
