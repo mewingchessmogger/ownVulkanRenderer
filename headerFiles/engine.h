@@ -30,6 +30,8 @@ private:
     void initCommands();
     void initSyncs();
     void initVertexBuffer();
+    void initUniformBuffer();
+    void initDescriptors();
     void initGraphicsPipeline();
    
     void createSwapchain();

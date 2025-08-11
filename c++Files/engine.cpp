@@ -111,7 +111,7 @@ void Engine::initDevice() {
 	allocInfo.physicalDevice = ctx->_chosenGPU;
 	allocInfo.device = ctx->_device;
 	allocInfo.instance = ctx->_instance;
-	vmaCreateAllocator(&allocInfo, &ctx->_allocator);
+	vmaCreateAllocator(&allocInfo, &btx->_allocator);
 
 
 }
@@ -181,27 +181,27 @@ void Engine::initVertexBuffer() {
 		.setUsage(vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eVertexBuffer);
 
 
-	ctx->_stagingBuffer.allocCreateInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_HOST; 						//keep pointer alive bit
-	ctx->_stagingBuffer.allocCreateInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
-	auto result = vmaCreateBuffer(ctx->_allocator, reinterpret_cast<VkBufferCreateInfo*>(&stagingInfo)
-		, &ctx->_stagingBuffer.allocCreateInfo, reinterpret_cast<VkBuffer*>(&ctx->_stagingBuffer.buffer), &ctx->_stagingBuffer.alloc, &ctx->_stagingBuffer.allocInfo);
+	btx->_stagingBuffer.allocCreateInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_HOST; 						//keep pointer alive bit
+	btx->_stagingBuffer.allocCreateInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+	auto result = vmaCreateBuffer(btx->_allocator, reinterpret_cast<VkBufferCreateInfo*>(&stagingInfo)
+		, &btx->_stagingBuffer.allocCreateInfo, reinterpret_cast<VkBuffer*>(&btx->_stagingBuffer.buffer), &btx->_stagingBuffer.alloc, &btx->_stagingBuffer.allocInfo);
 
 
-	ctx->_vertexBuffer.allocCreateInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
-	ctx->_vertexBuffer.allocCreateInfo.flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
+	btx->_vertexBuffer.allocCreateInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
+	btx->_vertexBuffer.allocCreateInfo.flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
 	
 	
-	auto result2 = vmaCreateBuffer(ctx->_allocator, reinterpret_cast<VkBufferCreateInfo*>(&dLocalInfo)
-		, &ctx->_vertexBuffer.allocCreateInfo, reinterpret_cast<VkBuffer*>(&ctx->_vertexBuffer.buffer), &ctx->_vertexBuffer.alloc, nullptr);
+	auto result2 = vmaCreateBuffer(btx->_allocator, reinterpret_cast<VkBufferCreateInfo*>(&dLocalInfo)
+		, &btx->_vertexBuffer.allocCreateInfo, reinterpret_cast<VkBuffer*>(&btx->_vertexBuffer.buffer), &btx->_vertexBuffer.alloc, nullptr);
 
 	if (result != VK_SUCCESS || result2 != VK_SUCCESS) {
 		throw std::runtime_error("vma alloc tweaking cuh");
 	}
 
 
-	std::memcpy(ctx->_stagingBuffer.allocInfo.pMappedData, btx->vertices.data(), byteSize);
+	std::memcpy(btx->_stagingBuffer.allocInfo.pMappedData, btx->vertices.data(), byteSize);
 	//flush it down the gpu drain so it gets visible for gpu 
-	vmaFlushAllocation(ctx->_allocator, ctx->_stagingBuffer.alloc, 0, byteSize);
+	vmaFlushAllocation(btx->_allocator, btx->_stagingBuffer.alloc, 0, byteSize);
 
 
 	//create commandbuffer
@@ -217,7 +217,7 @@ void Engine::initVertexBuffer() {
 	vk::BufferCopy region{};																//
 	region.setSize(byteSize);																//
 																							//
-	ctx->_cmdBuffers[0].copyBuffer(ctx->_stagingBuffer.buffer, ctx->_vertexBuffer.buffer, region);	//
+	ctx->_cmdBuffers[0].copyBuffer(btx->_stagingBuffer.buffer, btx->_vertexBuffer.buffer, region);	//
 																							//
 	ctx->_cmdBuffers[0].end();																	//
 																							//
@@ -228,10 +228,122 @@ void Engine::initVertexBuffer() {
 	ctx->_graphicsQueue.handle.waitIdle();														//waitIdle cheap hack so it doesnt pot collide with buffer in drawFrame()
 																							//
 																							//
+	vmaDestroyBuffer(btx->_allocator, btx->_stagingBuffer.buffer, btx->_stagingBuffer.alloc);
 
 }
 
+void Engine::initUniformBuffer() {
+	vk::DeviceSize uboStructSize = sizeof(btx->dataUBO);                   // 192
+	vk::DeviceSize alignUB = ctx->_chosenGPU.getProperties().limits.minUniformBufferOffsetAlignment;
+	std::cout << alignUB << " alignmin\n";
+	size_t currStride = uboStructSize;
 
+	//check if ubosize is less than align
+	if (currStride <= alignUB) {
+		currStride = alignUB;
+
+	}
+	else {
+		auto minStride= alignUB;
+		auto dummySize = alignUB;
+		while (currStride >dummySize) {
+			dummySize+= minStride;
+		}
+		currStride = dummySize;
+	}
+
+	auto byteSize = currStride * (size_t)ctx->NUM_OF_IMAGES;
+	btx->strideUBO = currStride;
+
+	vk::BufferCreateInfo uniformInfo{};
+	uniformInfo
+		.setSize(byteSize)
+		.setUsage(vk::BufferUsageFlagBits::eUniformBuffer)
+		.setSharingMode(vk::SharingMode::eExclusive);
+
+	btx->_uniformBuffer.allocCreateInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_HOST;
+	btx->_uniformBuffer.allocCreateInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+	btx->_uniformBuffer.allocCreateInfo.requiredFlags =
+		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+
+	auto result2 = vmaCreateBuffer(btx->_allocator, reinterpret_cast<VkBufferCreateInfo*>(&uniformInfo)
+		, &btx->_uniformBuffer.allocCreateInfo, reinterpret_cast<VkBuffer*>(&btx->_uniformBuffer.buffer), &btx->_uniformBuffer.alloc, &btx->_uniformBuffer.allocInfo);
+
+	if (result2 != VK_SUCCESS) {
+		throw std::runtime_error("vma uniform alloc tweaking cuh");
+	}
+
+}
+
+void Engine::initDescriptors() {
+	vk::DescriptorSetLayoutBinding bind{};
+	bind
+		.setBinding(0)
+		.setDescriptorType(vk::DescriptorType::eUniformBuffer)
+		.setDescriptorCount(1)
+		.setStageFlags(vk::ShaderStageFlagBits::eVertex);
+	
+
+	vk::DescriptorSetLayoutCreateInfo descLayout{};
+	descLayout.setBindings(bind);
+	
+	ctx->_descLayout = ctx->_device.createDescriptorSetLayout(descLayout);
+	vk::DescriptorPoolCreateInfo poolInfo{};
+	vk::DescriptorPoolSize poolSize{};
+	poolSize
+		.setDescriptorCount(2)//how many "DESCRIPTORS" can pool fit
+		.setType(vk::DescriptorType::eUniformBuffer);
+
+	poolInfo
+		.setMaxSets(2)//how many "DESCRIPTOR SETS" can be allcoated maximum
+		.setPoolSizes(poolSize);
+	ctx->_descPool = ctx->_device.createDescriptorPool(poolInfo);
+
+	vk::DescriptorSetAllocateInfo setAlloc{};
+	std::array<vk::DescriptorSetLayout,2> layouts{ ctx->_descLayout,ctx->_descLayout };
+	
+	setAlloc
+		.setDescriptorPool(ctx->_descPool)
+		.setDescriptorSetCount(2)//how many "DESCRIPTOR SETS" we choose to allocate
+		.setSetLayouts(layouts);
+
+
+	ctx->_descSets = ctx->_device.allocateDescriptorSets(setAlloc);
+	std::cout << ctx->_descSets.size() << " amount of desc sets\n";
+	
+
+	vk::DescriptorBufferInfo info1{};
+	info1
+		.setBuffer(btx->_uniformBuffer.buffer)
+		.setOffset(0)
+		.setRange(sizeof(btx->dataUBO));
+		
+
+	vk::DescriptorBufferInfo info2{};
+	info2 
+		.setBuffer(btx->_uniformBuffer.buffer)
+		.setOffset(btx->strideUBO)
+		.setRange(sizeof(btx->dataUBO));
+
+
+	std::array<vk::DescriptorBufferInfo, 2> bufferInfos = { info1,info2 };
+
+	vk::WriteDescriptorSet writes[2];
+
+	for (int i{}; i < 2; i++) {
+		writes[i]
+			.setBufferInfo(bufferInfos[i])
+			.setDstBinding(0)
+			.setDstSet(ctx->_descSets[i])
+			.setDescriptorType(vk::DescriptorType::eUniformBuffer)
+			.setDstArrayElement(0)
+			.setDescriptorCount(1);
+	}
+
+	ctx->_device.updateDescriptorSets(writes,{});
+
+
+}
 
 void Engine::initGraphicsPipeline() {
 	
@@ -361,9 +473,9 @@ void Engine::initGraphicsPipeline() {
 	vk::PushConstantRange  range{};
 
 	vk::PipelineLayoutCreateInfo layoutInfo{};
-	
+	layoutInfo.setSetLayouts(ctx->_descLayout);
 	ctx->_layout = ctx->_device.createPipelineLayout(layoutInfo);
-
+	
 
 
 
@@ -401,23 +513,34 @@ void Engine::drawFrame() {
 
 	ctx->_device.waitForFences(1, curFence, vk::True, 1000000000);
 	
+
 	vk::Semaphore imageReadySemaph = ctx->_imageReadySemaphores[ctx->currentFrame];//read below same shtick
 	vk::CommandBuffer cmdBuffer = ctx->_cmdBuffers[ctx->currentFrame];//this is indx currentFrame cuz the fence above 
 	//guarantees buffer is done submitting, therefore choose buffer based on fences index"currentFrame"
+	glm::mat4 model(1.0f);
+	model = glm::rotate(model, counter, glm::vec3(0, 0, 1));   // rotate around Z
 
+
+	btx->dataUBO.model = model;
+	uint8_t* base = static_cast<uint8_t*>(btx->_uniformBuffer.allocInfo.pMappedData);
+	std::memcpy(base + ctx->currentFrame * btx->strideUBO, &btx->dataUBO, sizeof(btx->dataUBO));
+
+
+	
+	
 	auto imgResult = ctx->_device.acquireNextImageKHR(ctx->_swapchain, 1000000000, imageReadySemaph);
 	if (isValidSwapchain(imgResult, imageReadySemaph) == false) {
 		return;
 	}
 	ctx->imageIndex = imgResult.value;
 	ctx->_device.resetFences(curFence);
-
-	//now were using imageindex as index, swapchainimages using it is obvious as that is the currently free from rendering
+	
+	//now we are using imageindex as index, swapchainimages using it is obvious as that is the currently free from rendering
 	//we use renderfinished semaphore to signal finished rendering the image, therefore it should be tighlty coupled to same index as swapchainimages
 	// "use currently free imagiendex to the image and its semaphore, otherwise the problem might be you reuse semaphore that is already being used in waitsemaphore field in presentsrckhr eg race condition
 	vk::Semaphore renderFinishedSemaph = ctx->_renderFinishedSemaphores[ctx->imageIndex];
 	vk::Image curImage = ctx->_swapchainImages[ctx->imageIndex];
-
+	
 	cmdBuffer.reset();
 
 	vk::CommandBufferBeginInfo beginInfo{};
@@ -446,13 +569,18 @@ void Engine::drawFrame() {
 		.setLayerCount(1)
 		.setColorAttachments(attachInfo);
 	cmdBuffer.beginRendering(renderInfo);
+	cmdBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
+		ctx->_layout, /*firstSet=*/0,
+		1, &ctx->_descSets[ctx->currentFrame],
+		0, nullptr);
 
 	cmdBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, ctx->_graphicsPipeline);
 	cmdBuffer.setViewport(0, vk::Viewport(0.0f, 0.0f, float(ctx->_swapchainExtent.width), float(ctx->_swapchainExtent.height), 0.0f, 1.0f));
 	cmdBuffer.setScissor(0, vk::Rect2D(vk::Offset2D(0, 0), ctx->_swapchainExtent));
 	vk::DeviceSize offset{};
 
-	cmdBuffer.bindVertexBuffers(0, ctx->_vertexBuffer.buffer, offset);
+	cmdBuffer.bindVertexBuffers(0, btx->_vertexBuffer.buffer, offset);
+	
 	cmdBuffer.draw(3, 1, 0, 0);
 	cmdBuffer.endRendering();
 
@@ -482,9 +610,9 @@ void Engine::cleanup() {
 	ctx->_device.destroyShaderModule(ctx->_fragShader);
 
 
-	vmaDestroyBuffer(ctx->_allocator, ctx->_vertexBuffer.buffer, ctx->_vertexBuffer.alloc);
-	vmaDestroyBuffer(ctx->_allocator, ctx->_stagingBuffer.buffer, ctx->_stagingBuffer.alloc);
-	vmaDestroyAllocator(ctx->_allocator);
+	vmaDestroyBuffer(btx->_allocator, btx->_vertexBuffer.buffer, btx->_vertexBuffer.alloc);
+	vmaDestroyBuffer(btx->_allocator, btx->_uniformBuffer.buffer, btx->_uniformBuffer.alloc);
+	vmaDestroyAllocator(btx->_allocator);
 
 	ctx->_device.destroyPipelineLayout(ctx->_layout);
 	ctx->_device.destroyPipeline(ctx->_graphicsPipeline);
@@ -522,6 +650,8 @@ void Engine::run() {
 	initCommands();
 	initSyncs();
 	initVertexBuffer();
+	initUniformBuffer();
+	initDescriptors();
 	initGraphicsPipeline();
 	
 	
