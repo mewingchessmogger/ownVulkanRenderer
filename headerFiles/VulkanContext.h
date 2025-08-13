@@ -3,6 +3,8 @@
 
 
 //forwrad declarations
+#include <functional>
+
 
 namespace vkb {
     struct Instance;
@@ -31,6 +33,7 @@ struct VulkanContext {
 
     vk::SwapchainKHR _swapchain;
     vk::Format _swapchainFormat;
+    
     std::vector<vk::Image> _swapchainImages;
     std::vector<vk::ImageView> _swapchainImageViews;
     vk::Extent2D _swapchainExtent;
@@ -47,7 +50,7 @@ struct VulkanContext {
 
     vk::ShaderModule _vertexShader;
     vk::ShaderModule _fragShader;
-
+    std::vector < std::function<void()>> trashCollector = {};
 
 
     vkb::Instance* vkbInstance;

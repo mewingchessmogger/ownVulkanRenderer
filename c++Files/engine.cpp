@@ -39,6 +39,7 @@ void Engine::initWindow(){
 	glfwSetWindowUserPointer(wtx->window, this);
 	glfwSetFramebufferSizeCallback(wtx->window, frameBufferResizeCallback);
 
+	
 }
 
 void Engine::initInstance() {
@@ -165,43 +166,204 @@ void Engine::initSyncs() {
 
 }
 
-void Engine::initVertexBuffer() {
-	
-	auto byteSize = btx->vertices.size() * sizeof(btx->vertices[0]);
+void Engine::createRenderTargetImages() {
 
+	vk::ImageCreateInfo imgCreateInfo{};
+
+	btx->_renderTargetFormat = vk::Format::eR16G16B16A16Sfloat;
+	auto extent = vk::Extent3D{};
+	extent.setWidth(ctx->WIDTH)
+		.setHeight(ctx->HEIGHT)
+		.setDepth(1);
+	uint32_t mipLevels = 1;
+
+	btx->_renderTargetExtent = extent;
+	imgCreateInfo
+		.setImageType(vk::ImageType::e2D)
+		.setFormat(btx->_renderTargetFormat)
+		.setExtent(btx->_renderTargetExtent)
+		.setMipLevels(mipLevels)
+		.setArrayLayers(1)
+		.setSamples(vk::SampleCountFlagBits::e1)
+		.setTiling(vk::ImageTiling::eOptimal)
+		.setUsage(vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eTransferSrc)
+		.setSharingMode(vk::SharingMode::eExclusive)
+		.setInitialLayout(vk::ImageLayout::eUndefined);
+
+	VmaAllocationCreateInfo allocImgInfo{};
+	allocImgInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
+
+	for (int i{}; i < ctx->NUM_OF_IMAGES; i++) {
+		allocatedImage img{};
+
+
+		auto result = vmaCreateImage(btx->_allocator, imgCreateInfo, &allocImgInfo, reinterpret_cast<VkImage*>(&img.image), &img.alloc, &img.allocInfo);
+
+		if (result != VK_SUCCESS) {
+			throw std::runtime_error("failed allocating rendertarget image");
+		}
+		vk::ImageViewCreateInfo info{};
+		info
+			.setViewType(vk::ImageViewType::e2D)
+			.setImage(img.image)
+			.setFormat(btx->_renderTargetFormat)
+			.setSubresourceRange({ vk::ImageAspectFlagBits::eColor,0,1,0,1 });
+		
+		img.view = ctx->_device.createImageView(info);
+		
+		btx->_renderTargets.push_back(img);
+	
+	
+	}
+
+
+
+}
+
+void Engine::createTextureImage() {
+	int texWidth, texHeight, texChannels;
+	stbi_uc* pixels = stbi_load("textures/sonne.png", &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+	vk::DeviceSize imageSize = texWidth * texHeight * 4;
+
+	if (!pixels) {
+		throw std::runtime_error("failed to load texture image!");
+	}
+	//get size 
+	
+
+	
+	
+	allocatedBuffer stagingBuffer{};
+	createStagingBuffer(imageSize, stagingBuffer);
+
+	memcpy(stagingBuffer.allocInfo.pMappedData, pixels, static_cast<size_t>(imageSize));
+	vmaFlushAllocation(btx->_allocator, stagingBuffer.alloc, 0, imageSize);
+
+
+
+	vk::ImageCreateInfo imgCreateInfo{};
+	
+	btx->_txtFormat = vk::Format::eR8G8B8A8Srgb;
+	auto extent = vk::Extent3D{};
+	extent.setWidth(texWidth)
+		.setHeight(texHeight)
+		.setDepth(1);			
+	uint32_t mipLevels = 1; //+ floor(log2(std::max(ctx->WIDTH, ctx->HEIGHT)));
+
+	btx->_txtExtent = extent;
+	imgCreateInfo
+		.setImageType(vk::ImageType::e2D)
+		.setFormat(btx->_txtFormat)
+		.setExtent(btx->_txtExtent)
+		.setMipLevels(mipLevels)
+		.setArrayLayers(1)
+		.setSamples(vk::SampleCountFlagBits::e1)
+		.setTiling(vk::ImageTiling::eOptimal)
+		.setUsage(vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled)
+		.setSharingMode(vk::SharingMode::eExclusive)
+		.setInitialLayout(vk::ImageLayout::eUndefined);
+
+	VmaAllocationCreateInfo allocImgInfo{};
+	allocImgInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
+
+	for (int i{}; i < 1; i++) {
+		allocatedImage img{};
+
+		auto result = vmaCreateImage(btx->_allocator, imgCreateInfo, &allocImgInfo, reinterpret_cast<VkImage*>(&img.image), &img.alloc, &img.allocInfo);
+
+		if (result != VK_SUCCESS) {
+			throw std::runtime_error("failed allocating txt images");
+		}
+		vk::ImageViewCreateInfo info{};
+		info
+			.setViewType(vk::ImageViewType::e2D)
+			.setImage(img.image)
+			.setFormat(btx->_txtFormat)
+			.setSubresourceRange({ vk::ImageAspectFlagBits::eColor,0,1,0,1 });
+
+		img.view = ctx->_device.createImageView(info);
+	    btx->_txtImages.push_back(img);
+	}
+	
+
+	vk::CommandBufferBeginInfo beginInfo{};													//used for copying stage buffer to fast buffer in gpu mem
+	beginInfo.setFlags(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);						//
+	//
+	ctx->_cmdBuffers[0].begin(beginInfo);														//
+	//
+	vk::BufferImageCopy region{};
+	//v
+	vk::ImageSubresourceLayers source{};
+	source.setAspectMask(vk::ImageAspectFlagBits::eColor).setLayerCount(1);
+
+	region.setImageSubresource(source).setImageExtent(vk::Extent3D{static_cast<uint32_t>(texWidth),static_cast<uint32_t>(texHeight), 1});												//
+	//
+	vkutils::transitionImage(btx->_txtImages[0].image, ctx->_cmdBuffers[0], vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal);
+
+
+	ctx->_cmdBuffers[0].copyBufferToImage(stagingBuffer.buffer,btx->_txtImages[0].image,vk::ImageLayout::eTransferDstOptimal,region);	//
+	//
+	ctx->_cmdBuffers[0].end();																	//
+	//
+	vk::SubmitInfo info{};																	//
+	info.setCommandBuffers(ctx->_cmdBuffers[0]);												//
+	//
+	ctx->_graphicsQueue.handle.submit(info);													//
+	ctx->_graphicsQueue.handle.waitIdle();														//waitIdle cheap hack so it doesnt pot collide with buffer in drawFrame()
+
+	vmaDestroyBuffer(btx->_allocator, stagingBuffer.buffer, stagingBuffer.alloc);
+}
+
+void Engine::createStagingBuffer(unsigned int long byteSize, allocatedBuffer& stagingBuffer) {
 	vk::BufferCreateInfo stagingInfo{};
 	stagingInfo
 		.setSize(byteSize)
 		.setUsage(vk::BufferUsageFlagBits::eTransferSrc);
 
+	VmaAllocationCreateInfo stageAllocCreateInfo{};
+	stageAllocCreateInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_HOST; 						//keep pointer alive bit
+	stageAllocCreateInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+	auto result = vmaCreateBuffer(btx->_allocator, reinterpret_cast<VkBufferCreateInfo*>(&stagingInfo)
+				, &stageAllocCreateInfo, reinterpret_cast<VkBuffer*>(&stagingBuffer.buffer), &stagingBuffer.alloc, &stagingBuffer.allocInfo);	
 
+	if (result != VK_SUCCESS) {
+		throw std::runtime_error("failed creation of staging buffer");
+	}
+
+
+}
+
+void Engine::initVertexBuffer() {
+	
+	auto byteSize = btx->vertices.size() * sizeof(btx->vertices[0]);
+	
+	allocatedBuffer stagingBuffer{};
+	createStagingBuffer(byteSize, stagingBuffer);
+
+	
 	vk::BufferCreateInfo dLocalInfo{};
 	dLocalInfo
 		.setSize(byteSize)
 		.setUsage(vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eVertexBuffer);
 
+	VmaAllocationCreateInfo vertexAllocCreateInfo{};
 
-	btx->_stagingBuffer.allocCreateInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_HOST; 						//keep pointer alive bit
-	btx->_stagingBuffer.allocCreateInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
-	auto result = vmaCreateBuffer(btx->_allocator, reinterpret_cast<VkBufferCreateInfo*>(&stagingInfo)
-		, &btx->_stagingBuffer.allocCreateInfo, reinterpret_cast<VkBuffer*>(&btx->_stagingBuffer.buffer), &btx->_stagingBuffer.alloc, &btx->_stagingBuffer.allocInfo);
-
-
-	btx->_vertexBuffer.allocCreateInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
-	btx->_vertexBuffer.allocCreateInfo.flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
+	vertexAllocCreateInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
+	vertexAllocCreateInfo.flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
 	
 	
-	auto result2 = vmaCreateBuffer(btx->_allocator, reinterpret_cast<VkBufferCreateInfo*>(&dLocalInfo)
-		, &btx->_vertexBuffer.allocCreateInfo, reinterpret_cast<VkBuffer*>(&btx->_vertexBuffer.buffer), &btx->_vertexBuffer.alloc, nullptr);
+	auto result1 = vmaCreateBuffer(btx->_allocator, reinterpret_cast<VkBufferCreateInfo*>(&dLocalInfo)
+		, &vertexAllocCreateInfo, reinterpret_cast<VkBuffer*>(&btx->_vertexBuffer.buffer), &btx->_vertexBuffer.alloc, nullptr);
 
-	if (result != VK_SUCCESS || result2 != VK_SUCCESS) {
+	if (result1 != VK_SUCCESS) {
 		throw std::runtime_error("vma alloc tweaking cuh");
 	}
 
+	
 
-	std::memcpy(btx->_stagingBuffer.allocInfo.pMappedData, btx->vertices.data(), byteSize);
+	std::memcpy(stagingBuffer.allocInfo.pMappedData, btx->vertices.data(), byteSize);
 	//flush it down the gpu drain so it gets visible for gpu 
-	vmaFlushAllocation(btx->_allocator, btx->_stagingBuffer.alloc, 0, byteSize);
+	vmaFlushAllocation(btx->_allocator, stagingBuffer.alloc, 0, byteSize);
 
 
 	//create commandbuffer
@@ -217,8 +379,8 @@ void Engine::initVertexBuffer() {
 	vk::BufferCopy region{};																//
 	region.setSize(byteSize);																//
 																							//
-	ctx->_cmdBuffers[0].copyBuffer(btx->_stagingBuffer.buffer, btx->_vertexBuffer.buffer, region);	//
-																							//
+	ctx->_cmdBuffers[0].copyBuffer(stagingBuffer.buffer, btx->_vertexBuffer.buffer, region);	//
+																//
 	ctx->_cmdBuffers[0].end();																	//
 																							//
 	vk::SubmitInfo info{};																	//
@@ -228,31 +390,31 @@ void Engine::initVertexBuffer() {
 	ctx->_graphicsQueue.handle.waitIdle();														//waitIdle cheap hack so it doesnt pot collide with buffer in drawFrame()
 																							//
 																							//
-	vmaDestroyBuffer(btx->_allocator, btx->_stagingBuffer.buffer, btx->_stagingBuffer.alloc);
+	vmaDestroyBuffer(btx->_allocator, stagingBuffer.buffer, stagingBuffer.alloc);
 
 }
 
 void Engine::initUniformBuffer() {
 	vk::DeviceSize uboStructSize = sizeof(btx->dataUBO);                   // 192
-	vk::DeviceSize alignUB = ctx->_chosenGPU.getProperties().limits.minUniformBufferOffsetAlignment;
-	std::cout << alignUB << " alignmin\n";
+	vk::DeviceSize minimumSizeUBO = ctx->_chosenGPU.getProperties().limits.minUniformBufferOffsetAlignment;
+	std::cout << minimumSizeUBO << " alignmin\n";
 	size_t currStride = uboStructSize;
 
 	//check if ubosize is less than align
-	if (currStride <= alignUB) {
-		currStride = alignUB;
+	if (currStride <= minimumSizeUBO) {
+		currStride = minimumSizeUBO;
 
 	}
 	else {
-		auto minStride= alignUB;
-		auto dummySize = alignUB;
+		auto minStride= minimumSizeUBO;
+		auto dummySize = minimumSizeUBO;
 		while (currStride >dummySize) {
 			dummySize+= minStride;
 		}
 		currStride = dummySize;
 	}
 
-	auto byteSize = currStride * (size_t)ctx->NUM_OF_IMAGES;
+	auto byteSize = currStride * (size_t)ctx->NUM_OF_IMAGES;//final size of desired ubo adjusted for limitations of gpu, my gpu has a min 64 byte ubo
 	btx->strideUBO = currStride;
 
 	vk::BufferCreateInfo uniformInfo{};
@@ -261,13 +423,19 @@ void Engine::initUniformBuffer() {
 		.setUsage(vk::BufferUsageFlagBits::eUniformBuffer)
 		.setSharingMode(vk::SharingMode::eExclusive);
 
-	btx->_uniformBuffer.allocCreateInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_HOST;
-	btx->_uniformBuffer.allocCreateInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
-	btx->_uniformBuffer.allocCreateInfo.requiredFlags =
+	VmaAllocationCreateInfo allocCreateInfo{};
+
+	allocCreateInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_HOST;
+
+	//bits below indicate firstly that we want to sequentially write to the gpu through cpu AND we will probs not read gpu mem, seconde gives us a undying pointer to gpu mem
+	allocCreateInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+	
+	//force these flags so theres no funny business, they might be included from above vma bits buts its not ensured
+	allocCreateInfo.requiredFlags =
 		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
 
-	auto result2 = vmaCreateBuffer(btx->_allocator, reinterpret_cast<VkBufferCreateInfo*>(&uniformInfo)
-		, &btx->_uniformBuffer.allocCreateInfo, reinterpret_cast<VkBuffer*>(&btx->_uniformBuffer.buffer), &btx->_uniformBuffer.alloc, &btx->_uniformBuffer.allocInfo);
+	auto result2 = vmaCreateBuffer(btx->_allocator, reinterpret_cast<VkBufferCreateInfo*>(&uniformInfo)//								allocinfo is not same as allocCreateInfo
+		, &allocCreateInfo, reinterpret_cast<VkBuffer*>(&btx->_uniformBuffer.buffer), &btx->_uniformBuffer.alloc, &btx->_uniformBuffer.allocInfo);
 
 	if (result2 != VK_SUCCESS) {
 		throw std::runtime_error("vma uniform alloc tweaking cuh");
@@ -517,15 +685,10 @@ void Engine::drawFrame() {
 	vk::Semaphore imageReadySemaph = ctx->_imageReadySemaphores[ctx->currentFrame];//read below same shtick
 	vk::CommandBuffer cmdBuffer = ctx->_cmdBuffers[ctx->currentFrame];//this is indx currentFrame cuz the fence above 
 	//guarantees buffer is done submitting, therefore choose buffer based on fences index"currentFrame"
-	glm::mat4 model(1.0f);
-	model = glm::rotate(model, counter, glm::vec3(0, 0, 1));   // rotate around Z
-
-
-	btx->dataUBO.model = model;
-	uint8_t* base = static_cast<uint8_t*>(btx->_uniformBuffer.allocInfo.pMappedData);
-	std::memcpy(base + ctx->currentFrame * btx->strideUBO, &btx->dataUBO, sizeof(btx->dataUBO));
-
-
+	
+	
+	
+	
 	
 	
 	auto imgResult = ctx->_device.acquireNextImageKHR(ctx->_swapchain, 1000000000, imageReadySemaph);
@@ -569,6 +732,16 @@ void Engine::drawFrame() {
 		.setLayerCount(1)
 		.setColorAttachments(attachInfo);
 	cmdBuffer.beginRendering(renderInfo);
+	
+	
+	//drawing shit 
+
+	glm::mat4 model(1.0f);
+	model = glm::rotate(model, counter, glm::vec3(0, 0, 1));   // rotate around Z
+	btx->dataUBO.model = model;
+	uint8_t* base = static_cast<uint8_t*>(btx->_uniformBuffer.allocInfo.pMappedData);
+	std::memcpy(base + ctx->currentFrame * btx->strideUBO, &btx->dataUBO, sizeof(btx->dataUBO));
+
 	cmdBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
 		ctx->_layout, /*firstSet=*/0,
 		1, &ctx->_descSets[ctx->currentFrame],
@@ -581,7 +754,7 @@ void Engine::drawFrame() {
 
 	cmdBuffer.bindVertexBuffers(0, btx->_vertexBuffer.buffer, offset);
 	
-	cmdBuffer.draw(3, 1, 0, 0);
+	cmdBuffer.draw(6, 1, 0, 0);
 	cmdBuffer.endRendering();
 
 	vkutils::transitionImage(curImage, cmdBuffer, vk::ImageLayout::eColorAttachmentOptimal, vk::ImageLayout::ePresentSrcKHR);
@@ -600,14 +773,32 @@ void Engine::drawFrame() {
 	ctx->currentFrame = (ctx->currentFrame + 1) % ctx->NUM_OF_IMAGES;
 }
 
+
+
 void Engine::cleanup() {
 	
 	
 	ctx->_device.waitIdle();
+	//run trashcollector
 
+	ctx->trashCollector.push_back([this]() {
+		ctx->_device.destroyShaderModule(ctx->_vertexShader);
+		ctx->_device.destroyShaderModule(ctx->_fragShader);
+		});
+	for (auto& i : ctx->trashCollector) {
+		i();
+	}
 
-	ctx->_device.destroyShaderModule(ctx->_vertexShader);
-	ctx->_device.destroyShaderModule(ctx->_fragShader);
+	ctx->_device.destroyDescriptorSetLayout(ctx->_descLayout);
+	ctx->_device.destroyDescriptorPool(ctx->_descPool);//sets are destroyed within pool 
+
+	ctx->_device.destroyImageView(btx->_renderTargets[0].view);
+	ctx->_device.destroyImageView(btx->_renderTargets[1].view);
+
+	vmaDestroyImage(btx->_allocator, btx->_renderTargets[0].image, btx->_renderTargets[0].alloc);
+	vmaDestroyImage(btx->_allocator, btx->_renderTargets[1].image, btx->_renderTargets[1].alloc);
+
+	vmaDestroyImage(btx->_allocator, btx->_txtImages[0].image, btx->_txtImages[0].alloc);
 
 
 	vmaDestroyBuffer(btx->_allocator, btx->_vertexBuffer.buffer, btx->_vertexBuffer.alloc);
@@ -649,6 +840,8 @@ void Engine::run() {
 	createSwapchain();
 	initCommands();
 	initSyncs();
+	createRenderTargetImages();
+	createTextureImage();
 	initVertexBuffer();
 	initUniformBuffer();
 	initDescriptors();
