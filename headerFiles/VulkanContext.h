@@ -33,11 +33,15 @@ struct VulkanContext {
 
     vk::SwapchainKHR _swapchain;
     vk::Format _swapchainFormat;
-    
+    vk::Sampler _sampler;
+
     std::vector<vk::Image> _swapchainImages;
     std::vector<vk::ImageView> _swapchainImageViews;
     vk::Extent2D _swapchainExtent;
-    vk::DescriptorSetLayout _descLayout;
+
+    vk::DescriptorSetLayout _descLayoutUBO;
+    vk::DescriptorSetLayout _descLayoutSampler;
+
     vk::DescriptorPool _descPool;
     std::vector<vk::DescriptorSet> _descSets;
     vk::CommandPool _cmdPool;

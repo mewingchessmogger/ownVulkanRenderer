@@ -40,7 +40,7 @@ private:
     void initUniformBuffer();
     void initDescriptors();
     void initGraphicsPipeline();
-    
+    void createTextureSampler();
     void createRenderTargetImages();
     void createTextureImage();
     void createSwapchain();

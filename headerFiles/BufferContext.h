@@ -27,6 +27,7 @@ struct allocatedImage {
 struct Vertex {
     glm::vec3 pos;
     glm::vec3 color;
+    glm::vec2 texCoord;
 };
 
 struct alignas(16) TransformUBO {
@@ -50,31 +51,29 @@ struct BufferContext {
     
     //IMAGE STUFF
     std::vector<allocatedImage> _renderTargets;
-    std::vector<vk::ImageView> _renderTargetViews;
+    //std::vector<vk::ImageView> _renderTargetViews;
     vk::Format _renderTargetFormat;
     vk::Extent3D _renderTargetExtent;
     
     std::vector<allocatedImage> _txtImages;
-    std::vector<vk::ImageView> _txtImageViews;
     vk::Format _txtFormat;
     vk::Extent3D _txtExtent;
 
 
-    //BUFFER DATA
-    std::vector<Vertex> vertices{
-        
-        {{-0.5f, 0.5f,0.0f}, {1.0f,0.0f,0.0f}},
-        {{-0.5f, -0.5f,0.0f}, {0.0f,1.0f,0.0f}},
-        {{0.5f, 0.5f,0.0f}, {0.0f,0.0f,1.0f}},
-        {{-0.5f, -0.5f,0.0f}, {0.0f,1.0f,0.0f}},
-        {{0.5f, -0.5f,0.0f}, {1.0f,0.0f,0.0f}},
-        {{0.5f, 0.5f,0.0f}, {0.0f,0.0f,1.0f}},
+    //BUFFER DATA : vertex,rgb,texCoord
+    std::vector<Vertex> vertices = {
 
+   {{-0.5f,  0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}, {1.0f, 1.0f}}, // bot-left
+   {{-0.5f, -0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}}, // top-left
+   {{ 0.5f,  0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}}, // bottom-right
 
+   {{-0.5f, -0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}}, // top-left
+   {{ 0.5f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}}, // top-right
+   {{ 0.5f,  0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}}, // bot-right
     };
-
     TransformUBO dataUBO;
     size_t strideUBO;
 
+    
 
 };

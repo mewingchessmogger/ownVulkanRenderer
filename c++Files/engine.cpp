@@ -75,19 +75,21 @@ void Engine::initDevice() {
 	vk::PhysicalDeviceVulkan13Features features{};
 	features.dynamicRendering = true;
 	features.synchronization2 = true;
-
+	
 	//vulkan 1.2 features
 	vk::PhysicalDeviceVulkan12Features features12{};
 	features12.bufferDeviceAddress = true;
 	features12.descriptorIndexing = true;
-
+	
+	vk::PhysicalDeviceFeatures feat{};
+	feat.samplerAnisotropy = true;
 
 
 	vkb::PhysicalDevice physicalDevice = physicalDeviceSelector
 		.set_minimum_version(1, 3)
 		.set_required_features_13(features)
 		.set_required_features_12(features12)
-
+		.set_required_features(feat)
 		.set_surface(ctx->_surface)
 		.select()
 		.value();
@@ -220,6 +222,35 @@ void Engine::createRenderTargetImages() {
 
 }
 
+
+void Engine::createTextureSampler() {
+
+
+	vk::SamplerCreateInfo samplerInfo{};
+
+	samplerInfo
+		.setMagFilter(vk::Filter::eLinear)
+		.setMinFilter(vk::Filter::eLinear)
+		.setAddressModeU(vk::SamplerAddressMode::eRepeat)
+		.setAddressModeV(vk::SamplerAddressMode::eRepeat)
+		.setAddressModeW(vk::SamplerAddressMode::eRepeat)
+		.setAnisotropyEnable(vk::True)
+		.setMaxAnisotropy(ctx->_chosenGPU.getProperties().limits.maxSamplerAnisotropy)
+		.setBorderColor(vk::BorderColor::eIntOpaqueBlack)
+		.setUnnormalizedCoordinates(vk::False)
+		.setCompareEnable(vk::False)
+		.setMipmapMode(vk::SamplerMipmapMode::eLinear)
+		.setMipLodBias(0.0f)
+		.setMinLod(0.0f)
+		.setMaxLod(0.0f);
+		
+
+
+	ctx->_sampler = ctx->_device.createSampler(samplerInfo);
+
+
+}
+
 void Engine::createTextureImage() {
 	int texWidth, texHeight, texChannels;
 	stbi_uc* pixels = stbi_load("textures/sonne.png", &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
@@ -303,6 +334,8 @@ void Engine::createTextureImage() {
 
 	ctx->_cmdBuffers[0].copyBufferToImage(stagingBuffer.buffer,btx->_txtImages[0].image,vk::ImageLayout::eTransferDstOptimal,region);	//
 	//
+
+	vkutils::transitionImage(btx->_txtImages[0].image, ctx->_cmdBuffers[0], vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eShaderReadOnlyOptimal);
 	ctx->_cmdBuffers[0].end();																	//
 	//
 	vk::SubmitInfo info{};																	//
@@ -444,35 +477,62 @@ void Engine::initUniformBuffer() {
 }
 
 void Engine::initDescriptors() {
-	vk::DescriptorSetLayoutBinding bind{};
-	bind
+
+	vk::DescriptorSetLayoutCreateInfo descLayout{};
+
+	vk::DescriptorSetLayoutBinding uboBind{};
+	uboBind
 		.setBinding(0)
 		.setDescriptorType(vk::DescriptorType::eUniformBuffer)
 		.setDescriptorCount(1)
 		.setStageFlags(vk::ShaderStageFlagBits::eVertex);
 	
+	descLayout.setBindings(uboBind);
 
-	vk::DescriptorSetLayoutCreateInfo descLayout{};
-	descLayout.setBindings(bind);
+	ctx->_descLayoutUBO = ctx->_device.createDescriptorSetLayout(descLayout);
+
+
+
+	vk::DescriptorSetLayoutBinding samplerBind{};
+	samplerBind
+		.setBinding(0)
+		.setDescriptorType(vk::DescriptorType::eCombinedImageSampler)
+		.setDescriptorCount(1)
+		.setStageFlags(vk::ShaderStageFlagBits::eFragment);
+
+
+	descLayout.setBindings(samplerBind);//same var just changing bind
 	
-	ctx->_descLayout = ctx->_device.createDescriptorSetLayout(descLayout);
+	ctx->_descLayoutSampler = ctx->_device.createDescriptorSetLayout(descLayout);
+
+
 	vk::DescriptorPoolCreateInfo poolInfo{};
-	vk::DescriptorPoolSize poolSize{};
-	poolSize
+	vk::DescriptorPoolSize uboSizes{};
+	vk::DescriptorPoolSize samplerSizes{};
+
+	uboSizes
 		.setDescriptorCount(2)//how many "DESCRIPTORS" can pool fit
 		.setType(vk::DescriptorType::eUniformBuffer);
 
+	samplerSizes
+		.setDescriptorCount(1)//how many "DESCRIPTORS" can pool fit
+		.setType(vk::DescriptorType::eCombinedImageSampler);
+
+	std::array<vk::DescriptorPoolSize,2> poolSizes = { uboSizes,samplerSizes };
+
 	poolInfo
-		.setMaxSets(2)//how many "DESCRIPTOR SETS" can be allcoated maximum
-		.setPoolSizes(poolSize);
+		.setMaxSets(3)//how many "DESCRIPTOR SETS" can be allcoated maximum
+		.setPoolSizes(poolSizes);
+
 	ctx->_descPool = ctx->_device.createDescriptorPool(poolInfo);
 
 	vk::DescriptorSetAllocateInfo setAlloc{};
-	std::array<vk::DescriptorSetLayout,2> layouts{ ctx->_descLayout,ctx->_descLayout };
+	
+	std::array<vk::DescriptorSetLayout,3> layouts{ctx->_descLayoutUBO,ctx->_descLayoutUBO,ctx->_descLayoutSampler};
 	
 	setAlloc
 		.setDescriptorPool(ctx->_descPool)
-		.setDescriptorSetCount(2)//how many "DESCRIPTOR SETS" we choose to allocate
+		.setDescriptorSetCount(3)//how many "DESCRIPTOR SETS" we choose to allocate
 		.setSetLayouts(layouts);
 
 
@@ -493,10 +553,11 @@ void Engine::initDescriptors() {
 		.setOffset(btx->strideUBO)
 		.setRange(sizeof(btx->dataUBO));
 
+	
 
 	std::array<vk::DescriptorBufferInfo, 2> bufferInfos = { info1,info2 };
 
-	vk::WriteDescriptorSet writes[2];
+	vk::WriteDescriptorSet writes[3];
 
 	for (int i{}; i < 2; i++) {
 		writes[i]
@@ -506,7 +567,25 @@ void Engine::initDescriptors() {
 			.setDescriptorType(vk::DescriptorType::eUniformBuffer)
 			.setDstArrayElement(0)
 			.setDescriptorCount(1);
+
 	}
+
+
+	vk::DescriptorImageInfo imgInfo{};
+	imgInfo
+		.setImageLayout(vk::ImageLayout::eShaderReadOnlyOptimal)
+		.setImageView(btx->_txtImages[0].view)
+		.setSampler(ctx->_sampler);
+
+	writes[2]
+		.setImageInfo(imgInfo)
+		.setDstBinding(0)
+		.setDstSet(ctx->_descSets[2])
+		.setDescriptorType(vk::DescriptorType::eCombinedImageSampler)
+		.setDstArrayElement(0)
+		.setDescriptorCount(1);
+
+	
 
 	ctx->_device.updateDescriptorSets(writes,{});
 
@@ -543,9 +622,13 @@ void Engine::initGraphicsPipeline() {
 	vk::PipelineVertexInputStateCreateInfo vertexInputInfo{};
 	
 	vk::VertexInputBindingDescription posBinding{};
+
 	vk::VertexInputBindingDescription clrBinding{};
+	vk::VertexInputBindingDescription texCoordBinding{};
+
 	vk::VertexInputAttributeDescription posAttrib{};
 	vk::VertexInputAttributeDescription clrAttrib{};
+	vk::VertexInputAttributeDescription texCoordAttrib{};
 
 	posBinding
 		.setBinding(0)
@@ -559,12 +642,21 @@ void Engine::initGraphicsPipeline() {
 		.setFormat(vk::Format::eR32G32B32Sfloat);
 	clrAttrib
 		.setLocation(1)
-		.setOffset(sizeof(btx->vertices[0].pos))
+		.setOffset(offsetof(Vertex, color))
 		.setBinding(0)
 		.setFormat(vk::Format::eR32G32B32Sfloat);
 
+
+	texCoordAttrib
+		.setLocation(2)
+		.setOffset(offsetof(Vertex,texCoord))
+		.setBinding(0)
+		.setFormat(vk::Format::eR32G32Sfloat);
+	
+
+
 	vk::VertexInputBindingDescription bindings[] = { posBinding };
-	vk::VertexInputAttributeDescription attribs[] = { posAttrib,clrAttrib };
+	vk::VertexInputAttributeDescription attribs[] = { posAttrib,clrAttrib,texCoordAttrib };
 
 	vertexInputInfo
 		.setVertexBindingDescriptions(bindings)
@@ -641,7 +733,9 @@ void Engine::initGraphicsPipeline() {
 	vk::PushConstantRange  range{};
 
 	vk::PipelineLayoutCreateInfo layoutInfo{};
-	layoutInfo.setSetLayouts(ctx->_descLayout);
+	std::array<vk::DescriptorSetLayout, 3> descriptorSetLayouts = {ctx->_descLayoutUBO,ctx->_descLayoutUBO,ctx->_descLayoutSampler};
+
+	layoutInfo.setSetLayouts(descriptorSetLayouts);
 	ctx->_layout = ctx->_device.createPipelineLayout(layoutInfo);
 	
 
@@ -710,8 +804,8 @@ void Engine::drawFrame() {
 	beginInfo.setFlags(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
 	cmdBuffer.begin(beginInfo);
 
-	vk::ClearColorValue clr{};
-	clr.setFloat32({ 0.0f, 0.0f, sinf(counter), 1.0f });
+	vk::ClearColorValue clr{};	//sinf(counter)
+	clr.setFloat32({ 0.0f, 0.0f, 1.0f, 1.0f });
 
 	vkutils::transitionImage(curImage, cmdBuffer, vk::ImageLayout::eUndefined, vk::ImageLayout::eColorAttachmentOptimal);
 	//begin dynrendering
@@ -737,15 +831,19 @@ void Engine::drawFrame() {
 	//drawing shit 
 
 	glm::mat4 model(1.0f);
+	//model = glm::rotate(model, 20.0f, glm::vec3(1, 0, 0));   // rotate around Z
+
 	model = glm::rotate(model, counter, glm::vec3(0, 0, 1));   // rotate around Z
 	btx->dataUBO.model = model;
+
 	uint8_t* base = static_cast<uint8_t*>(btx->_uniformBuffer.allocInfo.pMappedData);
 	std::memcpy(base + ctx->currentFrame * btx->strideUBO, &btx->dataUBO, sizeof(btx->dataUBO));
 
+	
+
 	cmdBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
-		ctx->_layout, /*firstSet=*/0,
-		1, &ctx->_descSets[ctx->currentFrame],
-		0, nullptr);
+		ctx->_layout,0,3, ctx->_descSets.data(), 0, nullptr);
+
 
 	cmdBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, ctx->_graphicsPipeline);
 	cmdBuffer.setViewport(0, vk::Viewport(0.0f, 0.0f, float(ctx->_swapchainExtent.width), float(ctx->_swapchainExtent.height), 0.0f, 1.0f));
@@ -789,7 +887,7 @@ void Engine::cleanup() {
 		i();
 	}
 
-	ctx->_device.destroyDescriptorSetLayout(ctx->_descLayout);
+	ctx->_device.destroyDescriptorSetLayout(ctx->_descLayoutUBO);
 	ctx->_device.destroyDescriptorPool(ctx->_descPool);//sets are destroyed within pool 
 
 	ctx->_device.destroyImageView(btx->_renderTargets[0].view);
@@ -842,6 +940,7 @@ void Engine::run() {
 	initSyncs();
 	createRenderTargetImages();
 	createTextureImage();
+	createTextureSampler();
 	initVertexBuffer();
 	initUniformBuffer();
 	initDescriptors();
