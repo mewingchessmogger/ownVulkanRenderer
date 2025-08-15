@@ -3,6 +3,7 @@
 #include <iostream>
 #include "VulkanContext.h"  
 #include "WindowContext.h"
+
 void Engine::createSwapchain() {
 	
 	vkb::SwapchainBuilder swapchainBuilder(ctx->_chosenGPU, ctx->_device, ctx->_surface);
@@ -35,6 +36,11 @@ void Engine::createSwapchain() {
 		std::cout << "WOAH" << "\n";
 	}
 
+	
+	//createimages
+	//allocate them
+	//createimageviewsd
+
 }
 void Engine::clearSwapchain() {
 
@@ -42,12 +48,13 @@ void Engine::clearSwapchain() {
 		ctx->_device.destroyImageView(ctx->_swapchainImageViews[i]);
 	}
 	ctx->_swapchainImages.clear();
+	
 	ctx->_swapchainImageViews.clear();
-
+	
 	ctx->_device.destroySwapchainKHR(ctx->_swapchain);
 }
 
-void Engine::recreateSwapchain() {
+void Engine::rethinkSwapchain() {
 
 	int width = 0, height = 0;
 	glfwGetFramebufferSize(wtx->window, &width, &height);
@@ -58,10 +65,13 @@ void Engine::recreateSwapchain() {
 	ctx->_device.waitIdle();
 
 	clearSwapchain();
+	
+	
 	ctx->WIDTH = width;
 	ctx->HEIGHT = height;
 
 	createSwapchain();
+	
 
 }
 
@@ -72,7 +82,8 @@ bool Engine::isValidSwapchain(vk::ResultValue<uint32_t> imgResult, vk::Semaphore
 		ctx->frameBufferResized = false;
 		ctx->_device.destroySemaphore(imageReadySemaphore);
 		ctx->_imageReadySemaphores[ctx->currentFrame] = ctx->_device.createSemaphore(vk::SemaphoreCreateInfo{});
-		recreateSwapchain();
+		rethinkSwapchain();
+		
 		return false;
 	}
 	else if (imgResult.result != vk::Result::eSuccess && imgResult.result != vk::Result::eSuboptimalKHR) {

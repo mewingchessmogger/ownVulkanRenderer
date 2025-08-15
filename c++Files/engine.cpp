@@ -167,6 +167,78 @@ void Engine::initSyncs() {
 
 
 }
+void Engine::createDepthImages() {
+
+	vk::ImageCreateInfo depthImageInfo{};
+
+	btx->_depthFormat = vk::Format::eD32Sfloat;
+	auto extent = vk::Extent3D{};
+
+	extent.setWidth(ctx->WIDTH)
+		.setHeight(ctx->HEIGHT)
+		.setDepth(1);
+	uint32_t mipLevels = 1; //+ floor(log2(std::max(ctx->WIDTH, ctx->HEIGHT)));
+
+	btx->_depthExtent = extent;
+	depthImageInfo
+		.setImageType(vk::ImageType::e2D)
+		.setFormat(btx->_depthFormat)
+		.setExtent(btx->_depthExtent)
+		.setMipLevels(mipLevels)
+		.setArrayLayers(1)
+		.setSamples(vk::SampleCountFlagBits::e1)
+		.setTiling(vk::ImageTiling::eOptimal)
+		.setUsage(vk::ImageUsageFlagBits::eDepthStencilAttachment)
+		.setSharingMode(vk::SharingMode::eExclusive)
+		.setInitialLayout(vk::ImageLayout::eUndefined);
+
+	VmaAllocationCreateInfo allocImgInfo{};
+	allocImgInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+	allocImgInfo.requiredFlags = VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+
+	for (int i{}; i < ctx->NUM_OF_IMAGES; i++) {
+		allocatedImage img{};
+
+		auto result = vmaCreateImage(btx->_allocator, depthImageInfo, &allocImgInfo, reinterpret_cast<VkImage*>(&img.image), &img.alloc, &img.allocInfo);
+
+		if (result != VK_SUCCESS) {
+			throw std::runtime_error("failed allocating depth images");
+		}
+		vk::ImageViewCreateInfo info{};
+		vk::ImageSubresourceRange subRange{};
+		subRange
+			.setAspectMask(vk::ImageAspectFlagBits::eDepth)
+			.setBaseMipLevel(0)
+			.setLevelCount(1)
+			.setBaseArrayLayer(0)
+			.setLayerCount(1);
+		info
+			.setViewType(vk::ImageViewType::e2D)
+			.setImage(img.image)
+			.setFormat(btx->_depthFormat)
+			.setSubresourceRange(subRange);
+
+		img.view = ctx->_device.createImageView(info);
+		btx->_depthImages.push_back(img);
+
+	}
+}
+
+void Engine::rethinkDepthImages() {
+	 
+
+	//destroy old alloc 
+	for (auto& allocImg : btx->_depthImages) {
+		vmaDestroyImage(btx->_allocator, allocImg.image, allocImg.alloc);
+	}
+	btx->_depthImages.clear();
+
+	createDepthImages();
+
+
+}
+
 
 void Engine::createRenderTargetImages() {
 
@@ -261,9 +333,6 @@ void Engine::createTextureImage() {
 	}
 	//get size 
 	
-
-	
-	
 	allocatedBuffer stagingBuffer{};
 	createStagingBuffer(imageSize, stagingBuffer);
 
@@ -343,7 +412,7 @@ void Engine::createTextureImage() {
 	//
 	ctx->_graphicsQueue.handle.submit(info);													//
 	ctx->_graphicsQueue.handle.waitIdle();														//waitIdle cheap hack so it doesnt pot collide with buffer in drawFrame()
-
+	ctx->_cmdBuffers[0].reset();
 	vmaDestroyBuffer(btx->_allocator, stagingBuffer.buffer, stagingBuffer.alloc);
 }
 
@@ -365,6 +434,8 @@ void Engine::createStagingBuffer(unsigned int long byteSize, allocatedBuffer& st
 
 
 }
+
+
 
 void Engine::initVertexBuffer() {
 	
@@ -421,7 +492,7 @@ void Engine::initVertexBuffer() {
 																							//
 	ctx->_graphicsQueue.handle.submit(info);													//
 	ctx->_graphicsQueue.handle.waitIdle();														//waitIdle cheap hack so it doesnt pot collide with buffer in drawFrame()
-																							//
+	ctx->_cmdBuffers[0].reset();																		//
 																							//
 	vmaDestroyBuffer(btx->_allocator, stagingBuffer.buffer, stagingBuffer.alloc);
 
@@ -598,8 +669,9 @@ void Engine::initGraphicsPipeline() {
 	vk::PipelineRenderingCreateInfo dynRenderInfo{};
 	dynRenderInfo
 		.setColorAttachmentCount(1)
-		.setPColorAttachmentFormats(&ctx->_swapchainFormat);
-
+		.setPColorAttachmentFormats(&ctx->_swapchainFormat)
+		.setDepthAttachmentFormat(btx->_depthFormat);
+		
 
 	auto vertexCode = vkutils::readFile("shaders/vertex/firstVertex.spv");
 	auto fragCode = vkutils::readFile("shaders/frag/firstFrag.spv");
@@ -730,17 +802,31 @@ void Engine::initGraphicsPipeline() {
 	dynamicState.setDynamicStates(dynamicStates);
 
 
-	vk::PushConstantRange  range{};
+	vk::PushConstantRange  pcRange{};
+	pcRange
+		.setOffset(0)
+		.setSize(sizeof(glm::mat4))
+		.setStageFlags(vk::ShaderStageFlagBits::eVertex);
 
 	vk::PipelineLayoutCreateInfo layoutInfo{};
 	std::array<vk::DescriptorSetLayout, 3> descriptorSetLayouts = {ctx->_descLayoutUBO,ctx->_descLayoutUBO,ctx->_descLayoutSampler};
 
-	layoutInfo.setSetLayouts(descriptorSetLayouts);
+	layoutInfo
+		.setSetLayouts(descriptorSetLayouts)
+		.setPushConstantRanges(pcRange);
+
 	ctx->_layout = ctx->_device.createPipelineLayout(layoutInfo);
 	
 
-
-
+	vk::PipelineDepthStencilStateCreateInfo depthInfo{};
+	depthInfo
+		.setDepthTestEnable(vk::True)
+		.setDepthWriteEnable(vk::True)
+		.setDepthCompareOp(vk::CompareOp::eLess)//if the incoming depth is "less" than stored depth we store the incoming fragment otherwise discard
+		.setDepthBoundsTestEnable(vk::False)//some obscure thing
+		.setStencilTestEnable(vk::False);//what is stencils duhguh
+		//.setFront() //these two need to be set if stenciltest is enabled!
+		//.setBack()
 
 	vk::GraphicsPipelineCreateInfo createPipelineInfo{};
 	createPipelineInfo
@@ -752,7 +838,7 @@ void Engine::initGraphicsPipeline() {
 		.setPViewportState(&viewportInfo)
 		.setPRasterizationState(&razInfo)
 		.setPMultisampleState(&multisampleInfo)
-		.setPDepthStencilState(nullptr)
+		.setPDepthStencilState(&depthInfo)
 		.setPColorBlendState(&blendInfo)
 		.setPDynamicState(&dynamicState)
 		.setLayout(ctx->_layout)
@@ -787,16 +873,18 @@ void Engine::drawFrame() {
 	
 	auto imgResult = ctx->_device.acquireNextImageKHR(ctx->_swapchain, 1000000000, imageReadySemaph);
 	if (isValidSwapchain(imgResult, imageReadySemaph) == false) {
+		//swapchain recreated in func above
+		rethinkDepthImages();
 		return;
 	}
-	ctx->imageIndex = imgResult.value;
+	auto imageIndex = imgResult.value;
 	ctx->_device.resetFences(curFence);
 	
 	//now we are using imageindex as index, swapchainimages using it is obvious as that is the currently free from rendering
 	//we use renderfinished semaphore to signal finished rendering the image, therefore it should be tighlty coupled to same index as swapchainimages
 	// "use currently free imagiendex to the image and its semaphore, otherwise the problem might be you reuse semaphore that is already being used in waitsemaphore field in presentsrckhr eg race condition
-	vk::Semaphore renderFinishedSemaph = ctx->_renderFinishedSemaphores[ctx->imageIndex];
-	vk::Image curImage = ctx->_swapchainImages[ctx->imageIndex];
+	vk::Semaphore renderFinishedSemaph = ctx->_renderFinishedSemaphores[imageIndex];
+	vk::Image curImage = ctx->_swapchainImages[imageIndex];
 	
 	cmdBuffer.reset();
 
@@ -808,51 +896,88 @@ void Engine::drawFrame() {
 	clr.setFloat32({ 0.0f, 0.0f, 1.0f, 1.0f });
 
 	vkutils::transitionImage(curImage, cmdBuffer, vk::ImageLayout::eUndefined, vk::ImageLayout::eColorAttachmentOptimal);
-	//begin dynrendering
+	
+	
+	//setup for dynrenderin
+
 	vk::RenderingAttachmentInfo attachInfo{};
 	attachInfo
-		.setImageView(ctx->_swapchainImageViews[ctx->imageIndex])
+		.setImageView(ctx->_swapchainImageViews[imageIndex])
 		.setImageLayout(vk::ImageLayout::eColorAttachmentOptimal)
 		.setClearValue(clr)
 		.setLoadOp(vk::AttachmentLoadOp::eClear)
 		.setStoreOp(vk::AttachmentStoreOp::eStore);
+		
 
+	vk::RenderingAttachmentInfo depthInfo{};
+	depthInfo
+		.setImageView(btx->_depthImages[imageIndex].view)
+		.setImageLayout(vk::ImageLayout::eDepthAttachmentOptimal)
+		.setClearValue(vk::ClearDepthStencilValue{1,0})
+		.setLoadOp(vk::AttachmentLoadOp::eClear)
+		.setStoreOp(vk::AttachmentStoreOp::eStore);
 
 	vk::RenderingInfoKHR renderInfo{};
+	
 	vk::Rect2D area;
 	area.setOffset(vk::Offset2D(0, 0)).setExtent(ctx->_swapchainExtent);
 	renderInfo
 		.setRenderArea(area)
 		.setLayerCount(1)
-		.setColorAttachments(attachInfo);
+		.setColorAttachments(attachInfo)
+		.setPDepthAttachment(&depthInfo);
+
 	cmdBuffer.beginRendering(renderInfo);
 	
 	
 	//drawing shit 
 
-	glm::mat4 model(1.0f);
-	//model = glm::rotate(model, 20.0f, glm::vec3(1, 0, 0));   // rotate around Z
-
-	model = glm::rotate(model, counter, glm::vec3(0, 0, 1));   // rotate around Z
-	btx->dataUBO.model = model;
-
-	uint8_t* base = static_cast<uint8_t*>(btx->_uniformBuffer.allocInfo.pMappedData);
-	std::memcpy(base + ctx->currentFrame * btx->strideUBO, &btx->dataUBO, sizeof(btx->dataUBO));
 
 	
-
-	cmdBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
-		ctx->_layout,0,3, ctx->_descSets.data(), 0, nullptr);
-
 
 	cmdBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, ctx->_graphicsPipeline);
 	cmdBuffer.setViewport(0, vk::Viewport(0.0f, 0.0f, float(ctx->_swapchainExtent.width), float(ctx->_swapchainExtent.height), 0.0f, 1.0f));
 	cmdBuffer.setScissor(0, vk::Rect2D(vk::Offset2D(0, 0), ctx->_swapchainExtent));
 	vk::DeviceSize offset{};
-
 	cmdBuffer.bindVertexBuffers(0, btx->_vertexBuffer.buffer, offset);
+
+
+
+	//camera
+	glm::mat4 view(1.0f);
+
+	glm::vec3 eye = glm::vec3(0.0f, 0.0f, 2.0f);  // camera position
+	glm::vec3 center = glm::vec3(0.0f, 0.0f, 0.0f);  // where the camera looks
+	glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);  // camera's up direction
+	view = glm::lookAt(eye, center, up);
+	btx->dataUBO.view = view;
+	//drawing
+	glm::mat4 model(1.0f);
+	glm::mat4 proj(1.0f);
+
+	proj = glm::perspective(glm::radians(45.0f), static_cast<float>(ctx->WIDTH / ctx->HEIGHT), 0.1f, 100.0f);
+	//model  = glm::translate(model, glm::vec3(0.0, ,0.0f));
+	model = glm::rotate(model, glm::radians(60.0f), glm::vec3(1, 0, 0));   // rotate around Z
+
+	model = glm::rotate(model, counter*2, glm::vec3(0, 0, 1));   // rotate around Z
+	cmdBuffer.pushConstants(ctx->_layout, vk::ShaderStageFlagBits::eVertex, 0, sizeof(glm::mat4), &model);
+
 	
+	//btx->dataUBO.model = model;
+	btx->dataUBO.proj = proj;
+	uint8_t* base = static_cast<uint8_t*>(btx->_uniformBuffer.allocInfo.pMappedData);
+	std::memcpy(base + ctx->currentFrame * btx->strideUBO, &btx->dataUBO, sizeof(btx->dataUBO));
+	cmdBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
+		ctx->_layout, 0, 3, ctx->_descSets.data(), 0, nullptr);
 	cmdBuffer.draw(6, 1, 0, 0);
+
+	model = glm::mat4(1.0f);
+	model = glm::translate(model, glm::vec3(0.0, sinf(counter), 0));
+	model = glm::rotate(model, glm::radians(60.0f), glm::vec3(1, 0, 0));   // rotate around e
+	cmdBuffer.pushConstants(ctx->_layout, vk::ShaderStageFlagBits::eVertex, 0,sizeof(glm::mat4), &model);
+	cmdBuffer.draw(6, 1, 0, 0);
+
+
 	cmdBuffer.endRendering();
 
 	vkutils::transitionImage(curImage, cmdBuffer, vk::ImageLayout::eColorAttachmentOptimal, vk::ImageLayout::ePresentSrcKHR);
@@ -865,7 +990,7 @@ void Engine::drawFrame() {
 	vk::PresentInfoKHR presInfo{};
 	presInfo.setWaitSemaphores({ renderFinishedSemaph })
 		.setSwapchains(ctx->_swapchain)
-		.setImageIndices({ ctx->imageIndex });
+		.setImageIndices({ imageIndex });
 	ctx->_graphicsQueue.handle.presentKHR(presInfo);
 
 	ctx->currentFrame = (ctx->currentFrame + 1) % ctx->NUM_OF_IMAGES;
@@ -893,8 +1018,12 @@ void Engine::cleanup() {
 	ctx->_device.destroyImageView(btx->_renderTargets[0].view);
 	ctx->_device.destroyImageView(btx->_renderTargets[1].view);
 
-	vmaDestroyImage(btx->_allocator, btx->_renderTargets[0].image, btx->_renderTargets[0].alloc);
-	vmaDestroyImage(btx->_allocator, btx->_renderTargets[1].image, btx->_renderTargets[1].alloc);
+
+	for (int i{}; i < ctx->NUM_OF_IMAGES; i++) {
+	vmaDestroyImage(btx->_allocator, btx->_renderTargets[i].image, btx->_renderTargets[i].alloc);
+	vmaDestroyImage(btx->_allocator, btx->_depthImages[i].image, btx->_depthImages[i].alloc);
+
+	}
 
 	vmaDestroyImage(btx->_allocator, btx->_txtImages[0].image, btx->_txtImages[0].alloc);
 
@@ -938,6 +1067,7 @@ void Engine::run() {
 	createSwapchain();
 	initCommands();
 	initSyncs();
+	createDepthImages();
 	createRenderTargetImages();
 	createTextureImage();
 	createTextureSampler();
