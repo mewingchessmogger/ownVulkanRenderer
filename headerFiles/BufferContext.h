@@ -10,18 +10,19 @@ struct VmaAllocationInfo;
 struct VmaAllocationCreateInfo;
 
 
-struct allocatedBuffer {
+struct AllocatedBuffer {
     vk::Buffer buffer{};
     VmaAllocation alloc{};
     VmaAllocationInfo allocInfo{};
 };
 
-struct allocatedImage {
+struct AllocatedImage {
     vk::Image image{};
     vk::ImageView view;
     VmaAllocation alloc{};
     VmaAllocationInfo allocInfo{};
-
+    vk::Format format;
+    vk::Extent3D extent;
 };
 
 struct Vertex {
@@ -30,47 +31,103 @@ struct Vertex {
     glm::vec2 texCoord;
 };
 
+
+
 struct alignas(16) TransformUBO {
     glm::mat4 model;
     glm::mat4 view;
     glm::mat4 proj;
+    
 
 };
+
 struct BufferContext {
 
 
    
 
     //BUFFER STUFF
-    allocatedBuffer _stagingBuffer;
-    allocatedBuffer _vertexBuffer;
-    allocatedBuffer _uniformBuffer;
+    AllocatedBuffer _stagingBuffer;
+    AllocatedBuffer _vertexBuffer;
+    AllocatedBuffer _uniformBuffer;
     VmaAllocator _allocator;
 
 
     
     //IMAGE STUFF
-    std::vector<allocatedImage> _renderTargets;
+    std::vector<AllocatedImage> _renderTargets;
     //std::vector<vk::ImageView> _renderTargetViews;
-    vk::Format _renderTargetFormat;
-    vk::Extent3D _renderTargetExtent;
     
-    std::vector<allocatedImage> _txtImages;
-    vk::Format _txtFormat;
-    vk::Extent3D _txtExtent;
+    std::vector<AllocatedImage> _txtImages;
+    
+    std::vector<AllocatedImage> _depthImages;
+    
 
 
-    //BUFFER DATA : vertex,rgb,texCoord
+
+    //BUFFER DATA : vertex, rgb , texCoord
     std::vector<Vertex> vertices = {
 
-   {{-0.5f,  0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}, {1.0f, 1.0f}}, // bot-left
-   {{-0.5f, -0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}}, // top-left
-   {{ 0.5f,  0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}}, // bottom-right
+    {{-0.5f, -0.5f,  0.5f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}}, // bottom-left
+    {{ 0.5f, -0.5f,  0.5f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}}, // bottom-right
+    {{ 0.5f,  0.5f,  0.5f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}}, // top-right
 
-   {{-0.5f, -0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}}, // top-left
-   {{ 0.5f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}}, // top-right
-   {{ 0.5f,  0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}}, // bot-right
+    {{-0.5f, -0.5f,  0.5f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}}, // bottom-left
+    {{ 0.5f,  0.5f,  0.5f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}}, // top-right
+    {{-0.5f,  0.5f,  0.5f}, {1.0f, 1.0f, 0.0f}, {0.0f, 1.0f}}, // top-left
+
+    // Back face
+    {{-0.5f, -0.5f, -0.5f}, {1.0f, 0.0f, 1.0f}, {1.0f, 0.0f}}, // bottom-right
+    {{-0.5f,  0.5f, -0.5f}, {0.0f, 1.0f, 1.0f}, {1.0f, 1.0f}}, // top-right
+    {{ 0.5f,  0.5f, -0.5f}, {0.5f, 0.5f, 0.5f}, {0.0f, 1.0f}}, // top-left
+
+    {{-0.5f, -0.5f, -0.5f}, {1.0f, 0.0f, 1.0f}, {1.0f, 0.0f}}, // bottom-right
+    {{ 0.5f,  0.5f, -0.5f}, {0.5f, 0.5f, 0.5f}, {0.0f, 1.0f}}, // top-left
+    {{ 0.5f, -0.5f, -0.5f}, {0.2f, 0.8f, 0.2f}, {0.0f, 0.0f}}, // bottom-left
+
+    // Left face
+    {{-0.5f, -0.5f, -0.5f}, {0.7f, 0.1f, 0.3f}, {0.0f, 0.0f}},
+    {{-0.5f, -0.5f,  0.5f}, {0.7f, 0.1f, 0.3f}, {1.0f, 0.0f}},
+    {{-0.5f,  0.5f,  0.5f}, {0.7f, 0.1f, 0.3f}, {1.0f, 1.0f}},
+
+    {{-0.5f, -0.5f, -0.5f}, {0.7f, 0.1f, 0.3f}, {0.0f, 0.0f}},
+    {{-0.5f,  0.5f,  0.5f}, {0.7f, 0.1f, 0.3f}, {1.0f, 1.0f}},
+    {{-0.5f,  0.5f, -0.5f}, {0.7f, 0.1f, 0.3f}, {0.0f, 1.0f}},
+
+    // Right face
+    {{ 0.5f, -0.5f, -0.5f}, {0.1f, 0.7f, 0.3f}, {1.0f, 0.0f}},
+    {{ 0.5f,  0.5f,  0.5f}, {0.1f, 0.7f, 0.3f}, {0.0f, 1.0f}},
+    {{ 0.5f, -0.5f,  0.5f}, {0.1f, 0.7f, 0.3f}, {0.0f, 0.0f}},
+
+    {{ 0.5f, -0.5f, -0.5f}, {0.1f, 0.7f, 0.3f}, {1.0f, 0.0f}},
+    {{ 0.5f,  0.5f, -0.5f}, {0.1f, 0.7f, 0.3f}, {1.0f, 1.0f}},
+    {{ 0.5f,  0.5f,  0.5f}, {0.1f, 0.7f, 0.3f}, {0.0f, 1.0f}},
+
+    // Top face
+    {{-0.5f,  0.5f, -0.5f}, {0.3f, 0.3f, 0.9f}, {0.0f, 1.0f}},
+    {{-0.5f,  0.5f,  0.5f}, {0.3f, 0.3f, 0.9f}, {0.0f, 0.0f}},
+    {{ 0.5f,  0.5f,  0.5f}, {0.3f, 0.3f, 0.9f}, {1.0f, 0.0f}},
+
+    {{-0.5f,  0.5f, -0.5f}, {0.3f, 0.3f, 0.9f}, {0.0f, 1.0f}},
+    {{ 0.5f,  0.5f,  0.5f}, {0.3f, 0.3f, 0.9f}, {1.0f, 0.0f}},
+    {{ 0.5f,  0.5f, -0.5f}, {0.3f, 0.3f, 0.9f}, {1.0f, 1.0f}},
+
+    // Bottom face
+    {{-0.5f, -0.5f, -0.5f}, {0.9f, 0.9f, 0.2f}, {1.0f, 1.0f}},
+    {{ 0.5f, -0.5f,  0.5f}, {0.9f, 0.9f, 0.2f}, {0.0f, 0.0f}},
+    {{-0.5f, -0.5f,  0.5f}, {0.9f, 0.9f, 0.2f}, {1.0f, 0.0f}},
+
+    {{-0.5f, -0.5f, -0.5f}, {0.9f, 0.9f, 0.2f}, {1.0f, 1.0f}},
+    {{ 0.5f, -0.5f, -0.5f}, {0.9f, 0.9f, 0.2f}, {0.0f, 1.0f}},
+    {{ 0.5f, -0.5f,  0.5f}, {0.9f, 0.9f, 0.2f}, {0.0f, 0.0f}},
+   
+   // bot-right
     };
+
+    std::vector<uint32_t> indices{};
+
+
+
     TransformUBO dataUBO;
     size_t strideUBO;
 

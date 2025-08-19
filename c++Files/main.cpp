@@ -1,6 +1,6 @@
 #include "pch.h"
 #include <engine.h>
-void main(){
+int main(){
 	Engine engine;
 
 	engine.run();

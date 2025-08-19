@@ -1,3 +1,4 @@
+
 #include "pch.h"
 #include <engine.h>
 #include "vkutils.h"
@@ -26,6 +27,8 @@ static void frameBufferResizeCallback(GLFWwindow* window, int width, int height)
 	auto context = static_cast<Engine*>(glfwGetWindowUserPointer(window));
 	context->ctx->frameBufferResized = true;
 }
+//
+
 
 void Engine::initWindow(){
 	
@@ -35,11 +38,12 @@ void Engine::initWindow(){
 	}
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 //	glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+
 	wtx->window = glfwCreateWindow(ctx->WIDTH, ctx->HEIGHT, " ayo wassup", nullptr, nullptr);
+	glfwSetInputMode(wtx->window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);   
 	glfwSetWindowUserPointer(wtx->window, this);
 	glfwSetFramebufferSizeCallback(wtx->window, frameBufferResizeCallback);
 
-	
 }
 
 void Engine::initInstance() {
@@ -167,133 +171,6 @@ void Engine::initSyncs() {
 
 
 }
-void Engine::createDepthImages() {
-
-	vk::ImageCreateInfo depthImageInfo{};
-
-	btx->_depthFormat = vk::Format::eD32Sfloat;
-	auto extent = vk::Extent3D{};
-
-	extent.setWidth(ctx->WIDTH)
-		.setHeight(ctx->HEIGHT)
-		.setDepth(1);
-	uint32_t mipLevels = 1; //+ floor(log2(std::max(ctx->WIDTH, ctx->HEIGHT)));
-
-	btx->_depthExtent = extent;
-	depthImageInfo
-		.setImageType(vk::ImageType::e2D)
-		.setFormat(btx->_depthFormat)
-		.setExtent(btx->_depthExtent)
-		.setMipLevels(mipLevels)
-		.setArrayLayers(1)
-		.setSamples(vk::SampleCountFlagBits::e1)
-		.setTiling(vk::ImageTiling::eOptimal)
-		.setUsage(vk::ImageUsageFlagBits::eDepthStencilAttachment)
-		.setSharingMode(vk::SharingMode::eExclusive)
-		.setInitialLayout(vk::ImageLayout::eUndefined);
-
-	VmaAllocationCreateInfo allocImgInfo{};
-	allocImgInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
-	allocImgInfo.requiredFlags = VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
-
-	for (int i{}; i < ctx->NUM_OF_IMAGES; i++) {
-		allocatedImage img{};
-
-		auto result = vmaCreateImage(btx->_allocator, depthImageInfo, &allocImgInfo, reinterpret_cast<VkImage*>(&img.image), &img.alloc, &img.allocInfo);
-
-		if (result != VK_SUCCESS) {
-			throw std::runtime_error("failed allocating depth images");
-		}
-		vk::ImageViewCreateInfo info{};
-		vk::ImageSubresourceRange subRange{};
-		subRange
-			.setAspectMask(vk::ImageAspectFlagBits::eDepth)
-			.setBaseMipLevel(0)
-			.setLevelCount(1)
-			.setBaseArrayLayer(0)
-			.setLayerCount(1);
-		info
-			.setViewType(vk::ImageViewType::e2D)
-			.setImage(img.image)
-			.setFormat(btx->_depthFormat)
-			.setSubresourceRange(subRange);
-
-		img.view = ctx->_device.createImageView(info);
-		btx->_depthImages.push_back(img);
-
-	}
-}
-
-void Engine::rethinkDepthImages() {
-	 
-
-	//destroy old alloc 
-	for (auto& allocImg : btx->_depthImages) {
-		vmaDestroyImage(btx->_allocator, allocImg.image, allocImg.alloc);
-	}
-	btx->_depthImages.clear();
-
-	createDepthImages();
-
-
-}
-
-
-void Engine::createRenderTargetImages() {
-
-	vk::ImageCreateInfo imgCreateInfo{};
-
-	btx->_renderTargetFormat = vk::Format::eR16G16B16A16Sfloat;
-	auto extent = vk::Extent3D{};
-	extent.setWidth(ctx->WIDTH)
-		.setHeight(ctx->HEIGHT)
-		.setDepth(1);
-	uint32_t mipLevels = 1;
-
-	btx->_renderTargetExtent = extent;
-	imgCreateInfo
-		.setImageType(vk::ImageType::e2D)
-		.setFormat(btx->_renderTargetFormat)
-		.setExtent(btx->_renderTargetExtent)
-		.setMipLevels(mipLevels)
-		.setArrayLayers(1)
-		.setSamples(vk::SampleCountFlagBits::e1)
-		.setTiling(vk::ImageTiling::eOptimal)
-		.setUsage(vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eTransferSrc)
-		.setSharingMode(vk::SharingMode::eExclusive)
-		.setInitialLayout(vk::ImageLayout::eUndefined);
-
-	VmaAllocationCreateInfo allocImgInfo{};
-	allocImgInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
-
-	for (int i{}; i < ctx->NUM_OF_IMAGES; i++) {
-		allocatedImage img{};
-
-
-		auto result = vmaCreateImage(btx->_allocator, imgCreateInfo, &allocImgInfo, reinterpret_cast<VkImage*>(&img.image), &img.alloc, &img.allocInfo);
-
-		if (result != VK_SUCCESS) {
-			throw std::runtime_error("failed allocating rendertarget image");
-		}
-		vk::ImageViewCreateInfo info{};
-		info
-			.setViewType(vk::ImageViewType::e2D)
-			.setImage(img.image)
-			.setFormat(btx->_renderTargetFormat)
-			.setSubresourceRange({ vk::ImageAspectFlagBits::eColor,0,1,0,1 });
-		
-		img.view = ctx->_device.createImageView(info);
-		
-		btx->_renderTargets.push_back(img);
-	
-	
-	}
-
-
-
-}
-
 
 void Engine::createTextureSampler() {
 
@@ -315,7 +192,7 @@ void Engine::createTextureSampler() {
 		.setMipLodBias(0.0f)
 		.setMinLod(0.0f)
 		.setMaxLod(0.0f);
-		
+
 
 
 	ctx->_sampler = ctx->_device.createSampler(samplerInfo);
@@ -323,68 +200,147 @@ void Engine::createTextureSampler() {
 
 }
 
+
+void Engine::forgeImages(vk::Format format,uint32_t width, uint32_t height, vk::ImageUsageFlags imageUsageIntent,
+						int imageCount, std::vector<AllocatedImage> &images, vk::ImageAspectFlags aspectMask,std::string type ) {
+
+	vk::ImageCreateInfo imageInfo{};
+
+	//vk::Format::eD32Sfloat;
+	auto extent = vk::Extent3D{};
+
+	extent.setWidth(width)
+		.setHeight(height)
+		.setDepth(1);
+	uint32_t mipLevels = 1; //+ floor(log2(std::max(ctx->WIDTH, ctx->HEIGHT)));
+
+	
+	imageInfo
+		.setImageType(vk::ImageType::e2D)
+		.setFormat(format)
+		.setExtent(extent)
+		.setMipLevels(mipLevels)
+		.setArrayLayers(1)
+		.setSamples(vk::SampleCountFlagBits::e1)
+		.setTiling(vk::ImageTiling::eOptimal)
+		.setUsage(imageUsageIntent)
+		.setSharingMode(vk::SharingMode::eExclusive)
+		.setInitialLayout(vk::ImageLayout::eUndefined);
+
+	VmaAllocationCreateInfo allocImgInfo{};
+	allocImgInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+	allocImgInfo.requiredFlags = VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+
+	for (int i{}; i < imageCount; i++) {
+		AllocatedImage img{};
+		img.format = format;
+		img.extent = extent;
+
+		auto result = vmaCreateImage(btx->_allocator, imageInfo, &allocImgInfo, reinterpret_cast<VkImage*>(&img.image), &img.alloc, &img.allocInfo);
+
+		if (result != VK_SUCCESS) {
+			throw std::runtime_error("failed allocating type: " + type + " images");
+		}
+		vk::ImageViewCreateInfo info{};
+		vk::ImageSubresourceRange subRange{};
+
+		subRange
+			.setAspectMask(aspectMask)
+			.setBaseMipLevel(0)
+			.setLevelCount(1)
+			.setBaseArrayLayer(0)
+			.setLayerCount(1);
+		
+		info
+			.setViewType(vk::ImageViewType::e2D)
+			.setImage(img.image)
+			.setFormat(format)
+			.setSubresourceRange(subRange);
+
+		img.view = ctx->_device.createImageView(info);
+		
+		
+		images.push_back(img);
+
+	}
+}
+
+
+void Engine::createDepthImages() {
+
+
+
+	forgeImages(
+		vk::Format::eD32Sfloat, ctx->WIDTH, ctx->HEIGHT,
+		vk::ImageUsageFlagBits::eDepthStencilAttachment,
+		ctx->NUM_OF_IMAGES,
+		btx->_depthImages,
+		vk::ImageAspectFlagBits::eDepth,
+		"depth");
+
+
+
+}
+
+void Engine::rethinkDepthImages() {
+	 
+
+	//destroy old alloc 
+	for (auto& allocImg : btx->_depthImages) {
+		vmaDestroyImage(btx->_allocator, allocImg.image, allocImg.alloc);
+	}
+	btx->_depthImages.clear();
+	
+	createDepthImages();
+
+
+}
+
+
+void Engine::createRenderTargetImages() {
+
+	
+
+	forgeImages(vk::Format::eR16G16B16A16Sfloat,
+		ctx->WIDTH, ctx->HEIGHT,
+		vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eTransferSrc,
+		ctx->NUM_OF_IMAGES,
+		btx->_renderTargets,
+		vk::ImageAspectFlagBits::eColor,
+		"texture"
+	);
+}
+
+
 void Engine::createTextureImage() {
+	
+
+
 	int texWidth, texHeight, texChannels;
-	stbi_uc* pixels = stbi_load("textures/sonne.png", &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+	stbi_uc* pixels = stbi_load("textures/viking_room.png", &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
 	vk::DeviceSize imageSize = texWidth * texHeight * 4;
 
 	if (!pixels) {
 		throw std::runtime_error("failed to load texture image!");
 	}
 	//get size 
-	
-	allocatedBuffer stagingBuffer{};
+
+	AllocatedBuffer stagingBuffer{};
 	createStagingBuffer(imageSize, stagingBuffer);
 
 	memcpy(stagingBuffer.allocInfo.pMappedData, pixels, static_cast<size_t>(imageSize));
 	vmaFlushAllocation(btx->_allocator, stagingBuffer.alloc, 0, imageSize);
 
 
-
-	vk::ImageCreateInfo imgCreateInfo{};
-	
-	btx->_txtFormat = vk::Format::eR8G8B8A8Srgb;
-	auto extent = vk::Extent3D{};
-	extent.setWidth(texWidth)
-		.setHeight(texHeight)
-		.setDepth(1);			
-	uint32_t mipLevels = 1; //+ floor(log2(std::max(ctx->WIDTH, ctx->HEIGHT)));
-
-	btx->_txtExtent = extent;
-	imgCreateInfo
-		.setImageType(vk::ImageType::e2D)
-		.setFormat(btx->_txtFormat)
-		.setExtent(btx->_txtExtent)
-		.setMipLevels(mipLevels)
-		.setArrayLayers(1)
-		.setSamples(vk::SampleCountFlagBits::e1)
-		.setTiling(vk::ImageTiling::eOptimal)
-		.setUsage(vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled)
-		.setSharingMode(vk::SharingMode::eExclusive)
-		.setInitialLayout(vk::ImageLayout::eUndefined);
-
-	VmaAllocationCreateInfo allocImgInfo{};
-	allocImgInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
-
-	for (int i{}; i < 1; i++) {
-		allocatedImage img{};
-
-		auto result = vmaCreateImage(btx->_allocator, imgCreateInfo, &allocImgInfo, reinterpret_cast<VkImage*>(&img.image), &img.alloc, &img.allocInfo);
-
-		if (result != VK_SUCCESS) {
-			throw std::runtime_error("failed allocating txt images");
-		}
-		vk::ImageViewCreateInfo info{};
-		info
-			.setViewType(vk::ImageViewType::e2D)
-			.setImage(img.image)
-			.setFormat(btx->_txtFormat)
-			.setSubresourceRange({ vk::ImageAspectFlagBits::eColor,0,1,0,1 });
-
-		img.view = ctx->_device.createImageView(info);
-	    btx->_txtImages.push_back(img);
-	}
-	
+	forgeImages(
+		vk::Format::eR8G8B8A8Srgb, static_cast<uint32_t>(texWidth),
+		static_cast<uint32_t>(texHeight),
+		vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled,
+		1,
+		btx->_txtImages, 
+		vk::ImageAspectFlagBits::eColor, 
+		"texture");
 
 	vk::CommandBufferBeginInfo beginInfo{};													//used for copying stage buffer to fast buffer in gpu mem
 	beginInfo.setFlags(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);						//
@@ -399,7 +355,6 @@ void Engine::createTextureImage() {
 	region.setImageSubresource(source).setImageExtent(vk::Extent3D{static_cast<uint32_t>(texWidth),static_cast<uint32_t>(texHeight), 1});												//
 	//
 	vkutils::transitionImage(btx->_txtImages[0].image, ctx->_cmdBuffers[0], vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal);
-
 
 	ctx->_cmdBuffers[0].copyBufferToImage(stagingBuffer.buffer,btx->_txtImages[0].image,vk::ImageLayout::eTransferDstOptimal,region);	//
 	//
@@ -416,7 +371,7 @@ void Engine::createTextureImage() {
 	vmaDestroyBuffer(btx->_allocator, stagingBuffer.buffer, stagingBuffer.alloc);
 }
 
-void Engine::createStagingBuffer(unsigned int long byteSize, allocatedBuffer& stagingBuffer) {
+void Engine::createStagingBuffer(unsigned int long byteSize, AllocatedBuffer& stagingBuffer) {
 	vk::BufferCreateInfo stagingInfo{};
 	stagingInfo
 		.setSize(byteSize)
@@ -441,7 +396,7 @@ void Engine::initVertexBuffer() {
 	
 	auto byteSize = btx->vertices.size() * sizeof(btx->vertices[0]);
 	
-	allocatedBuffer stagingBuffer{};
+	AllocatedBuffer stagingBuffer{};
 	createStagingBuffer(byteSize, stagingBuffer);
 
 	
@@ -670,7 +625,7 @@ void Engine::initGraphicsPipeline() {
 	dynRenderInfo
 		.setColorAttachmentCount(1)
 		.setPColorAttachmentFormats(&ctx->_swapchainFormat)
-		.setDepthAttachmentFormat(btx->_depthFormat);
+		.setDepthAttachmentFormat(btx->_depthImages[0].format);
 		
 
 	auto vertexCode = vkutils::readFile("shaders/vertex/firstVertex.spv");
@@ -857,6 +812,7 @@ void Engine::drawFrame() {
 	static float counter{};
 	counter += 0.01f;
 
+	
 	vk::Fence curFence[] = { ctx->_fences[ctx->currentFrame] };
 
 	ctx->_device.waitForFences(1, curFence, vk::True, 1000000000);
@@ -893,7 +849,7 @@ void Engine::drawFrame() {
 	cmdBuffer.begin(beginInfo);
 
 	vk::ClearColorValue clr{};	//sinf(counter)
-	clr.setFloat32({ 0.0f, 0.0f, 1.0f, 1.0f });
+	clr.setFloat32({ 0.0f, 0.0f, 0.3f, 1.0f });
 
 	vkutils::transitionImage(curImage, cmdBuffer, vk::ImageLayout::eUndefined, vk::ImageLayout::eColorAttachmentOptimal);
 	
@@ -946,20 +902,24 @@ void Engine::drawFrame() {
 	//camera
 	glm::mat4 view(1.0f);
 
-	glm::vec3 eye = glm::vec3(0.0f, 0.0f, 2.0f);  // camera position
-	glm::vec3 center = glm::vec3(0.0f, 0.0f, 0.0f);  // where the camera looks
-	glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);  // camera's up direction
-	view = glm::lookAt(eye, center, up);
+	 // camera position
+	glm::vec3 eye = camera.eye;
+
+	static glm::vec3 direction{};  // where the camera looks
+	
+	direction = camera.dir;
+	view = glm::lookAt(eye, eye+direction, camera.up);
+
 	btx->dataUBO.view = view;
 	//drawing
 	glm::mat4 model(1.0f);
 	glm::mat4 proj(1.0f);
 
-	proj = glm::perspective(glm::radians(45.0f), static_cast<float>(ctx->WIDTH / ctx->HEIGHT), 0.1f, 100.0f);
-	//model  = glm::translate(model, glm::vec3(0.0, ,0.0f));
-	model = glm::rotate(model, glm::radians(60.0f), glm::vec3(1, 0, 0));   // rotate around Z
+	proj = glm::perspective(glm::radians(45.0f), (float)ctx->WIDTH / (float)ctx->HEIGHT, 0.1f, 100.0f);
+	model  = glm::translate(model, glm::vec3(0.0,0.0,-1.0f));
+	//model = glm::rotate(model, glm::radians(30.0f), glm::vec3(1, 0, 0));   // rotate around Z
 
-	model = glm::rotate(model, counter*2, glm::vec3(0, 0, 1));   // rotate around Z
+	//model = glm::rotate(model, counter*2, glm::vec3(0, 0.3f, 1));   // rotate around Z
 	cmdBuffer.pushConstants(ctx->_layout, vk::ShaderStageFlagBits::eVertex, 0, sizeof(glm::mat4), &model);
 
 	
@@ -969,13 +929,13 @@ void Engine::drawFrame() {
 	std::memcpy(base + ctx->currentFrame * btx->strideUBO, &btx->dataUBO, sizeof(btx->dataUBO));
 	cmdBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
 		ctx->_layout, 0, 3, ctx->_descSets.data(), 0, nullptr);
-	cmdBuffer.draw(6, 1, 0, 0);
+	cmdBuffer.draw(3*12, 1, 0, 0);
 
-	model = glm::mat4(1.0f);
-	model = glm::translate(model, glm::vec3(0.0, sinf(counter), 0));
-	model = glm::rotate(model, glm::radians(60.0f), glm::vec3(1, 0, 0));   // rotate around e
-	cmdBuffer.pushConstants(ctx->_layout, vk::ShaderStageFlagBits::eVertex, 0,sizeof(glm::mat4), &model);
-	cmdBuffer.draw(6, 1, 0, 0);
+	model = glm::translate(model, glm::vec3(0.0, 2.0, -1.0f));
+	cmdBuffer.pushConstants(ctx->_layout, vk::ShaderStageFlagBits::eVertex, 0, sizeof(glm::mat4), &model);
+	cmdBuffer.draw(3 * 12, 1, 0, 0);
+
+
 
 
 	cmdBuffer.endRendering();
@@ -995,8 +955,6 @@ void Engine::drawFrame() {
 
 	ctx->currentFrame = (ctx->currentFrame + 1) % ctx->NUM_OF_IMAGES;
 }
-
-
 
 void Engine::cleanup() {
 	
@@ -1060,6 +1018,95 @@ void Engine::cleanup() {
 }
 
 
+
+
+void mouseHandler(Camera &c,float dT) {
+
+
+	float xoffset = c.newPos.x - c.oldPos.x;
+	float yoffset = c.newPos.y - c.oldPos.y;
+
+	float sens = 10.0f *dT;
+
+
+	c.yaw += sens * xoffset;
+	c.pitch += sens * yoffset;
+
+	c.pitch = std::clamp(c.pitch, -89.0f, 89.0f);
+
+	c.dir.x = cos(glm::radians(c.yaw)) * cos(glm::radians(c.pitch));
+	c.dir.z = sin(glm::radians(c.yaw)) * cos(glm::radians(c.pitch));
+	c.dir.y = sin(glm::radians(c.pitch));
+	c.dir = glm::normalize(c.dir);
+
+	c.oldPos = c.newPos;
+
+
+
+}
+
+void inputHandler(Camera* camera, float dT,WindowContext* wtx) {
+	
+	float addSpeed = dT * 2.0f;
+	const float cameraSpeed = 3.0f * dT; // 
+
+	if (glfwGetKey(wtx->window, GLFW_KEY_C) == GLFW_PRESS) //forwrad
+		camera->eye += cameraSpeed * camera->dir;
+	if (glfwGetKey(wtx->window, GLFW_KEY_X) == GLFW_PRESS)//back
+		camera->eye -= cameraSpeed * camera->dir;
+	if (glfwGetKey(wtx->window, GLFW_KEY_Z) == GLFW_PRESS)
+		camera->eye -= glm::normalize(glm::cross(camera->dir, camera->up)) * cameraSpeed;//left
+	if (glfwGetKey(wtx->window, GLFW_KEY_V) == GLFW_PRESS)
+		camera->eye += glm::normalize(glm::cross(camera->dir, camera->up)) * cameraSpeed;//right
+
+	if (glfwGetKey(wtx->window, GLFW_KEY_LEFT) == GLFW_PRESS)
+		camera->eye.y -= cameraSpeed;
+	if (glfwGetKey(wtx->window, GLFW_KEY_END) == GLFW_PRESS)
+		camera->eye.y += cameraSpeed;
+
+
+
+}
+void majorHandler(Camera &camera,WindowContext *wtx) {
+	static float lastTime = glfwGetTime();
+
+	float currTime = glfwGetTime();
+
+	float dT = currTime - lastTime;
+
+	lastTime = currTime;
+
+	static bool gWasPressed = false;
+	static bool toggleCursor = false;
+
+	int state = glfwGetKey(wtx->window, GLFW_KEY_G);
+
+	if (state == GLFW_PRESS && !gWasPressed) {
+		toggleCursor = !toggleCursor;
+
+		if (!toggleCursor) {
+			glfwSetInputMode(wtx->window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+			double cx, cy;
+			glfwGetCursorPos(wtx->window, &cx, &cy);
+			camera.oldPos = { cx, cy };
+		}
+		else {
+			glfwSetInputMode(wtx->window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+
+		}
+
+	}
+
+
+	if (!toggleCursor) {
+		inputHandler(&camera, dT, wtx);
+		mouseHandler(camera, dT);
+	}
+
+	gWasPressed = (state == GLFW_PRESS);
+
+}
+
 void Engine::run() {
 	initWindow();
 	initInstance();
@@ -1081,9 +1128,14 @@ void Engine::run() {
 	
 		while (!glfwWindowShouldClose(wtx->window)) {
 			glfwPollEvents();
+
+			glfwGetCursorPos(wtx->window, &camera.newPos.x, &camera.newPos.y);
 			if (glfwGetKey(wtx->window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
 				glfwSetWindowShouldClose(wtx->window, GLFW_TRUE);
 			}
+			
+			majorHandler(camera,wtx);
+
 			drawFrame();
 
 		}

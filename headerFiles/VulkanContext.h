@@ -14,8 +14,8 @@ namespace vkb {
 struct VulkanContext {
     
     const int NUM_OF_IMAGES = 2;
-    int WIDTH = 800;
-    int HEIGHT = 800;
+    int WIDTH = 1200;
+    int HEIGHT = 1200;
     const bool bUseValidationLayers = true;
     bool frameBufferResized = false;
 
@@ -54,13 +54,14 @@ struct VulkanContext {
 
     vk::ShaderModule _vertexShader;
     vk::ShaderModule _fragShader;
+    
     std::vector < std::function<void()>> trashCollector = {};
-
+    glm::vec3 movementSpeed{};
 
     vkb::Instance* vkbInstance;
     vkb::Device* vkbDevice;
 
-
+    float deltaT;
 
     uint32_t imageIndex{};
     int currentFrame{};
