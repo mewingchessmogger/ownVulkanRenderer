@@ -2,6 +2,7 @@
 #include "pch.h"
 #include <engine.h>
 #include "vkutils.h"
+#include <pipelineBuilder.h>
 #include <Vulkancontext.h>
 #include <BufferContext.h>
 #include <WindowContext.h>
@@ -390,15 +391,30 @@ void Engine::createStagingBuffer(unsigned int long byteSize, AllocatedBuffer& st
 
 }
 
+//
+//
+//size_t Engine::loadModels(const std::string MODEL_PATH) {
+//
+//	tinyobj::attrib_t attrib;
+//	std::vector<tinyobj::shape_t> shapes;
+//	std::vector<tinyobj::material_t> materials;
+//	std::string warn, err;
+//
+//	if (!tinyobj::LoadObj(&attrib, &shapes, &materials,&warn, &err, MODEL_PATH.c_str())) {
+//		throw std::runtime_error(err+ warn);
+//	}
+//
+//
+//
+//
+//}
+
 
 
 void Engine::initVertexBuffer() {
+	//size_t byteSize = loadModels("models/viking_roomb.obj");
+	size_t byteSize = btx->vertices.size() * sizeof(btx->vertices[0]);
 	
-	auto byteSize = btx->vertices.size() * sizeof(btx->vertices[0]);
-	
-	AllocatedBuffer stagingBuffer{};
-	createStagingBuffer(byteSize, stagingBuffer);
-
 	
 	vk::BufferCreateInfo dLocalInfo{};
 	dLocalInfo
@@ -418,7 +434,10 @@ void Engine::initVertexBuffer() {
 		throw std::runtime_error("vma alloc tweaking cuh");
 	}
 
-	
+
+	AllocatedBuffer stagingBuffer{};
+	createStagingBuffer(byteSize, stagingBuffer);
+
 
 	std::memcpy(stagingBuffer.allocInfo.pMappedData, btx->vertices.data(), byteSize);
 	//flush it down the gpu drain so it gets visible for gpu 
@@ -432,26 +451,31 @@ void Engine::initVertexBuffer() {
 
 	vk::CommandBufferBeginInfo beginInfo{};													//used for copying stage buffer to fast buffer in gpu mem
 	beginInfo.setFlags(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);						//
-																							//
+	//
 	ctx->_cmdBuffers[0].begin(beginInfo);														//
-																							//
+	//
 	vk::BufferCopy region{};																//
 	region.setSize(byteSize);																//
-																							//
+	//
 	ctx->_cmdBuffers[0].copyBuffer(stagingBuffer.buffer, btx->_vertexBuffer.buffer, region);	//
-																//
+	//
 	ctx->_cmdBuffers[0].end();																	//
-																							//
+	//
 	vk::SubmitInfo info{};																	//
 	info.setCommandBuffers(ctx->_cmdBuffers[0]);												//
-																							//
+	//
 	ctx->_graphicsQueue.handle.submit(info);													//
 	ctx->_graphicsQueue.handle.waitIdle();														//waitIdle cheap hack so it doesnt pot collide with buffer in drawFrame()
 	ctx->_cmdBuffers[0].reset();																		//
-																							//
+	//
 	vmaDestroyBuffer(btx->_allocator, stagingBuffer.buffer, stagingBuffer.alloc);
 
+
+	
 }
+
+
+
 
 void Engine::initUniformBuffer() {
 	vk::DeviceSize uboStructSize = sizeof(btx->dataUBO);                   // 192
@@ -554,7 +578,7 @@ void Engine::initDescriptors() {
 
 	vk::DescriptorSetAllocateInfo setAlloc{};
 	
-	std::array<vk::DescriptorSetLayout,3> layouts{ctx->_descLayoutUBO,ctx->_descLayoutUBO,ctx->_descLayoutSampler};
+	std::vector<vk::DescriptorSetLayout> layouts{ctx->_descLayoutUBO,ctx->_descLayoutUBO,ctx->_descLayoutSampler};
 	
 	setAlloc
 		.setDescriptorPool(ctx->_descPool)
@@ -619,191 +643,33 @@ void Engine::initDescriptors() {
 }
 
 void Engine::initGraphicsPipeline() {
-	
-
-	vk::PipelineRenderingCreateInfo dynRenderInfo{};
-	dynRenderInfo
-		.setColorAttachmentCount(1)
-		.setPColorAttachmentFormats(&ctx->_swapchainFormat)
-		.setDepthAttachmentFormat(btx->_depthImages[0].format);
-		
-
-	auto vertexCode = vkutils::readFile("shaders/vertex/firstVertex.spv");
-	auto fragCode = vkutils::readFile("shaders/frag/firstFrag.spv");
-	ctx->_vertexShader = vkutils::createShaderModule(ctx->_device,vertexCode);
-	ctx->_fragShader = vkutils::createShaderModule(ctx->_device,fragCode);
-	vk::PipelineShaderStageCreateInfo vertexInfo{};
-	vertexInfo
-		.setStage(vk::ShaderStageFlagBits::eVertex)
-		.setModule(ctx->_vertexShader)
-		.setPName("main");
-	vk::PipelineShaderStageCreateInfo fragInfo{};
-	fragInfo
-		.setStage(vk::ShaderStageFlagBits::eFragment)
-		.setModule(ctx->_fragShader)
-		.setPName("main");
-	vk::PipelineShaderStageCreateInfo shaderStages[2] = { vertexInfo,fragInfo };
 
 
-
-	vk::PipelineVertexInputStateCreateInfo vertexInputInfo{};
-	
-	vk::VertexInputBindingDescription posBinding{};
-
-	vk::VertexInputBindingDescription clrBinding{};
-	vk::VertexInputBindingDescription texCoordBinding{};
-
-	vk::VertexInputAttributeDescription posAttrib{};
-	vk::VertexInputAttributeDescription clrAttrib{};
-	vk::VertexInputAttributeDescription texCoordAttrib{};
-
-	posBinding
-		.setBinding(0)
-		.setInputRate(vk::VertexInputRate::eVertex)
-		.setStride(sizeof(btx->vertices[0]));
-
-	posAttrib
-		.setLocation(0)
-		.setOffset(0)
-		.setBinding(0)
-		.setFormat(vk::Format::eR32G32B32Sfloat);
-	clrAttrib
-		.setLocation(1)
-		.setOffset(offsetof(Vertex, color))
-		.setBinding(0)
-		.setFormat(vk::Format::eR32G32B32Sfloat);
+	auto bindings = btx->getVertBindings();
+	auto attributes = btx->getVertAttributes();
+	std::vector<vk::DescriptorSetLayout> descriptorSetLayouts = { ctx->_descLayoutUBO,ctx->_descLayoutUBO,ctx->_descLayoutSampler };
 
 
-	texCoordAttrib
-		.setLocation(2)
-		.setOffset(offsetof(Vertex,texCoord))
-		.setBinding(0)
-		.setFormat(vk::Format::eR32G32Sfloat);
-	
+	PipelineBuilder plb{};
+	plb
+		.setDevice(ctx->_device)
+		.setDynRendering(1, { ctx->_swapchainFormat }, btx->_depthImages[0].format)
+		.setShaderStages("shaders/vertex/firstVertex.spv", "shaders/frag/firstFrag.spv")
+		.setVertexInputInfo(bindings,attributes)
+		.setAssemblyInfo()
+		.setScissorAndViewport(ctx->_swapchainExtent)
+		.setRasterizerInfo()
+		.setMultiSampling()//nuffin right now
+		.setBlendState()
+		.setDynState()
+		.setPCRange(sizeof(glm::mat4))
+		.setDescLayout(descriptorSetLayouts)
+		.createPipeLineLayout()
+		.setDepthStencilState()
+		.createPipeline();
 
-
-	vk::VertexInputBindingDescription bindings[] = { posBinding };
-	vk::VertexInputAttributeDescription attribs[] = { posAttrib,clrAttrib,texCoordAttrib };
-
-	vertexInputInfo
-		.setVertexBindingDescriptions(bindings)
-		.setVertexAttributeDescriptions(attribs);
-
-	vk::PipelineInputAssemblyStateCreateInfo assInfo{};
-	assInfo.setTopology(vk::PrimitiveTopology::eTriangleList);
-
-
-	vk::PipelineViewportStateCreateInfo viewportInfo{};
-	vk::Rect2D scissor{};
-	scissor
-		.setOffset(vk::Offset2D{ 0,0 })
-		.setExtent(ctx->_swapchainExtent);
-	vk::Viewport viewport{};
-	viewport
-		.setX(0)
-		.setY(0)
-		.setWidth((float)ctx->_swapchainExtent.width)
-		.setHeight((float)ctx->_swapchainExtent.height)
-		.setMinDepth(0.0)
-		.setMaxDepth(1.0);
-	viewportInfo
-		.setScissorCount(1)
-		.setViewportCount(1);
-
-
-	vk::PipelineRasterizationStateCreateInfo razInfo{};
-	razInfo
-		.setDepthClampEnable(vk::False)
-		.setRasterizerDiscardEnable(vk::False)
-		.setPolygonMode(vk::PolygonMode::eFill)
-		.setCullMode(vk::CullModeFlagBits::eBack)
-		.setFrontFace(vk::FrontFace::eClockwise)
-		.setDepthBiasEnable(vk::False)
-		.setDepthBiasSlopeFactor(1.0)
-		.setLineWidth(1.0);
-
-
-	vk::PipelineMultisampleStateCreateInfo multisampleInfo{};
-	multisampleInfo
-		.setRasterizationSamples(vk::SampleCountFlagBits::e1)
-		.setSampleShadingEnable(vk::False);
-
-
-	vk::PipelineDepthStencilStateCreateInfo stencilInfo{};//nullptr
-
-
-	vk::PipelineColorBlendStateCreateInfo blendInfo{};
-	vk::PipelineColorBlendAttachmentState attachInfo{};
-	attachInfo.colorWriteMask =
-		vk::ColorComponentFlagBits::eR |
-		vk::ColorComponentFlagBits::eG |
-		vk::ColorComponentFlagBits::eB |
-		vk::ColorComponentFlagBits::eA;
-	attachInfo.blendEnable = vk::True;
-	attachInfo.srcColorBlendFactor = vk::BlendFactor::eSrcAlpha;
-	attachInfo.dstColorBlendFactor = vk::BlendFactor::eOneMinusSrcAlpha;
-	attachInfo.colorBlendOp = vk::BlendOp::eAdd;
-	attachInfo.srcAlphaBlendFactor = vk::BlendFactor::eOne;
-	attachInfo.dstAlphaBlendFactor = vk::BlendFactor::eZero;
-	attachInfo.alphaBlendOp = vk::BlendOp::eAdd;
-	blendInfo.setAttachments(attachInfo);
-
-
-	std::vector dynamicStates = {
-	vk::DynamicState::eViewport,
-	vk::DynamicState::eScissor
-	};
-	vk::PipelineDynamicStateCreateInfo dynamicState{};
-	dynamicState.setDynamicStates(dynamicStates);
-
-
-	vk::PushConstantRange  pcRange{};
-	pcRange
-		.setOffset(0)
-		.setSize(sizeof(glm::mat4))
-		.setStageFlags(vk::ShaderStageFlagBits::eVertex);
-
-	vk::PipelineLayoutCreateInfo layoutInfo{};
-	std::array<vk::DescriptorSetLayout, 3> descriptorSetLayouts = {ctx->_descLayoutUBO,ctx->_descLayoutUBO,ctx->_descLayoutSampler};
-
-	layoutInfo
-		.setSetLayouts(descriptorSetLayouts)
-		.setPushConstantRanges(pcRange);
-
-	ctx->_layout = ctx->_device.createPipelineLayout(layoutInfo);
-	
-
-	vk::PipelineDepthStencilStateCreateInfo depthInfo{};
-	depthInfo
-		.setDepthTestEnable(vk::True)
-		.setDepthWriteEnable(vk::True)
-		.setDepthCompareOp(vk::CompareOp::eLess)//if the incoming depth is "less" than stored depth we store the incoming fragment otherwise discard
-		.setDepthBoundsTestEnable(vk::False)//some obscure thing
-		.setStencilTestEnable(vk::False);//what is stencils duhguh
-		//.setFront() //these two need to be set if stenciltest is enabled!
-		//.setBack()
-
-	vk::GraphicsPipelineCreateInfo createPipelineInfo{};
-	createPipelineInfo
-		.setPNext(&dynRenderInfo)			// setting or dynrendering
-		.setFlags(vk::PipelineCreateFlags{})// tweakiung pipelines set to nothing
-		.setStages(shaderStages)// ctx->arr of shaderstageInfos
-		.setPVertexInputState(&vertexInputInfo)// setting up buffers future
-		.setPInputAssemblyState(&assInfo)// setting up that interpereting every three oints as a triangle here
-		.setPViewportState(&viewportInfo)
-		.setPRasterizationState(&razInfo)
-		.setPMultisampleState(&multisampleInfo)
-		.setPDepthStencilState(&depthInfo)
-		.setPColorBlendState(&blendInfo)
-		.setPDynamicState(&dynamicState)
-		.setLayout(ctx->_layout)
-		.setBasePipelineHandle(vk::Pipeline{})
-		.setBasePipelineIndex(-1);
-
-	ctx->_graphicsPipeline = ctx->_device.createGraphicsPipeline({}, createPipelineInfo).value;
-
-
-
+	ctx->_graphicsPipeline = plb.getPipeline();
+	ctx->_layout = plb.pipeLineLayout;
 
 }
 

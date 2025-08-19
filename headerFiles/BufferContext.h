@@ -4,6 +4,7 @@
 #include <vector>
 #include<glm/vec3.hpp>
 #include<glm/mat4x4.hpp>
+#include <vulkan/vulkan.hpp>
 struct VmaAllocator_T;      using VmaAllocator = VmaAllocator_T*;
 struct VmaAllocation_T;     using VmaAllocation = VmaAllocation_T*;
 struct VmaAllocationInfo;
@@ -27,8 +28,10 @@ struct AllocatedImage {
 
 struct Vertex {
     glm::vec3 pos;
-    glm::vec3 color;
+    glm::vec3 normal;
     glm::vec2 texCoord;
+
+
 };
 
 
@@ -131,6 +134,45 @@ struct BufferContext {
     TransformUBO dataUBO;
     size_t strideUBO;
 
-    
+    std::vector<vk::VertexInputBindingDescription> getVertBindings(){
+    vk::VertexInputBindingDescription posBinding{};
+    posBinding
+        .setBinding(0)
+        .setInputRate(vk::VertexInputRate::eVertex)
+        .setStride(sizeof(vertices[0]));
+    return {posBinding};
+    }
+
+    std::vector<vk::VertexInputAttributeDescription> getVertAttributes() {
+
+        vk::VertexInputAttributeDescription posAttrib{};
+        vk::VertexInputAttributeDescription normAttrib{};
+        vk::VertexInputAttributeDescription texCoordAttrib{};
+
+
+        posAttrib
+            .setLocation(0)
+            .setOffset(0)
+            .setBinding(0)
+            .setFormat(vk::Format::eR32G32B32Sfloat);
+        normAttrib
+            .setLocation(1)
+            .setOffset(offsetof(Vertex, normal))
+            .setBinding(0)
+            .setFormat(vk::Format::eR32G32B32Sfloat);
+
+
+        texCoordAttrib
+            .setLocation(2)
+            .setOffset(offsetof(Vertex, texCoord))
+            .setBinding(0)
+            .setFormat(vk::Format::eR32G32Sfloat);
+
+
+        return { posAttrib,normAttrib,texCoordAttrib };
+    }
+
+
+
 
 };

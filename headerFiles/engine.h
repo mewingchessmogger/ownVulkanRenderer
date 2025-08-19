@@ -54,6 +54,7 @@ private:
     void initSyncs();
     void createStagingBuffer(unsigned int long byteSize, AllocatedBuffer& stagingBuffer);
     void initVertexBuffer();
+    size_t loadModels(const std::string MODEL_PATH);
     void initUniformBuffer();
     void initDescriptors();
     void initGraphicsPipeline();
