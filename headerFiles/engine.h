@@ -37,6 +37,7 @@ public:
     Engine();
     ~Engine();
 
+   
     void run();// creates window, init, main loop, cleanup
     VulkanContext* ctx = nullptr;
     BufferContext* btx = nullptr;
@@ -52,9 +53,11 @@ private:
     void initAllocator();
     void initCommands();
     void initSyncs();
+    void loadModels();
+
     void createStagingBuffer(unsigned int long byteSize, AllocatedBuffer& stagingBuffer);
     void initVertexBuffer();
-    size_t loadModels(const std::string MODEL_PATH);
+    void initIndexBuffer();
     void initUniformBuffer();
     void initDescriptors();
     void initGraphicsPipeline();

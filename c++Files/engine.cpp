@@ -391,23 +391,59 @@ void Engine::createStagingBuffer(unsigned int long byteSize, AllocatedBuffer& st
 
 }
 
-//
-//
-//size_t Engine::loadModels(const std::string MODEL_PATH) {
-//
-//	tinyobj::attrib_t attrib;
-//	std::vector<tinyobj::shape_t> shapes;
-//	std::vector<tinyobj::material_t> materials;
-//	std::string warn, err;
-//
-//	if (!tinyobj::LoadObj(&attrib, &shapes, &materials,&warn, &err, MODEL_PATH.c_str())) {
-//		throw std::runtime_error(err+ warn);
-//	}
-//
-//
-//
-//
-//}
+
+void Engine::loadModels() {
+
+	
+
+	tinyobj::attrib_t attrib;
+	std::vector<tinyobj::shape_t> shapes;
+	std::vector<tinyobj::material_t> materials;
+	std::string warn, err;
+	const std::string modPath = "models/viking_room.obj";
+	if (!tinyobj::LoadObj(&attrib, &shapes, &materials,&warn, &err, modPath.c_str())) {
+		throw std::runtime_error(err+ warn);
+	}
+
+	btx->vertices.clear();
+	for (auto& shape : shapes) {
+		for (const auto& index : shape.mesh.indices) {
+			Vertex vertex{};
+			
+			
+			vertex.pos = {
+				attrib.vertices[3 * index.vertex_index + 0],
+				attrib.vertices[3 * index.vertex_index + 1],
+				attrib.vertices[3 * index.vertex_index + 2]
+			};
+			
+			if (index.texcoord_index >= 0) {
+
+				vertex.texCoord = {
+					attrib.texcoords[2 * index.texcoord_index + 0],
+					1.0f - attrib.texcoords[2 * index.texcoord_index + 1] };
+
+			}
+
+			vertex.normal = {
+				attrib.normals[3 * index.normal_index + 0],
+				attrib.normals[3 * index.normal_index + 1],
+				attrib.normals[3 * index.normal_index + 2]
+			};
+
+			if (btx->uniqueVertices.count(vertex) == 0) {
+				btx->uniqueVertices[vertex] = static_cast<uint32_t>(btx->vertices.size());
+				btx->vertices.push_back(vertex);
+
+			}
+			
+			btx->indices.push_back(btx->uniqueVertices[vertex]);
+
+		}
+	}
+	std::cout << "size of vertices:" << btx->vertices.size() << "\n";
+
+}
 
 
 
@@ -474,8 +510,68 @@ void Engine::initVertexBuffer() {
 	
 }
 
+void Engine::initIndexBuffer() {
+	//size_t byteSize = loadModels("models/viking_roomb.obj");
+	size_t byteSizeIndex = btx->indices.size() * sizeof(uint32_t);
 
 
+	vk::BufferCreateInfo dLocalInfo{};
+	dLocalInfo
+		.setSize(byteSizeIndex)
+		.setUsage(vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eIndexBuffer);
+
+	VmaAllocationCreateInfo vertexAllocCreateInfo{};
+
+	vertexAllocCreateInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
+	vertexAllocCreateInfo.flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
+
+
+	auto result1 = vmaCreateBuffer(btx->_allocator, reinterpret_cast<VkBufferCreateInfo*>(&dLocalInfo)
+		, &vertexAllocCreateInfo, reinterpret_cast<VkBuffer*>(&btx->_indexBuffer.buffer), &btx->_indexBuffer.alloc, nullptr);
+
+	if (result1 != VK_SUCCESS) {
+		throw std::runtime_error("vma alloc tweaking cuh");
+	}
+
+
+	AllocatedBuffer stagingBuffer{};
+	createStagingBuffer(byteSizeIndex, stagingBuffer);
+
+
+	std::memcpy(stagingBuffer.allocInfo.pMappedData, btx->indices.data(), byteSizeIndex);
+	//flush it down the gpu drain so it gets visible for gpu 
+	vmaFlushAllocation(btx->_allocator, stagingBuffer.alloc, 0, byteSizeIndex);
+
+
+	//create commandbuffer
+
+	//submit to queue
+
+
+	vk::CommandBufferBeginInfo beginInfo{};													//used for copying stage buffer to fast buffer in gpu mem
+	beginInfo.setFlags(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);						//
+	//
+	ctx->_cmdBuffers[0].begin(beginInfo);														//
+	//
+	vk::BufferCopy region{};																//
+	region.setSize(byteSizeIndex);																//
+	//
+	ctx->_cmdBuffers[0].copyBuffer(stagingBuffer.buffer, btx->_indexBuffer.buffer, region);	//
+	//
+	ctx->_cmdBuffers[0].end();																	//
+	//
+	vk::SubmitInfo info{};																	//
+	info.setCommandBuffers(ctx->_cmdBuffers[0]);												//
+	//
+	ctx->_graphicsQueue.handle.submit(info);													//
+	ctx->_graphicsQueue.handle.waitIdle();														//waitIdle cheap hack so it doesnt pot collide with buffer in drawFrame()
+	ctx->_cmdBuffers[0].reset();																		//
+	//
+	vmaDestroyBuffer(btx->_allocator, stagingBuffer.buffer, stagingBuffer.alloc);
+
+
+
+}
 
 void Engine::initUniformBuffer() {
 	vk::DeviceSize uboStructSize = sizeof(btx->dataUBO);                   // 192
@@ -762,7 +858,7 @@ void Engine::drawFrame() {
 	cmdBuffer.setScissor(0, vk::Rect2D(vk::Offset2D(0, 0), ctx->_swapchainExtent));
 	vk::DeviceSize offset{};
 	cmdBuffer.bindVertexBuffers(0, btx->_vertexBuffer.buffer, offset);
-
+	cmdBuffer.bindIndexBuffer(btx->_indexBuffer.buffer, offset,vk::IndexType::eUint32);
 
 
 	//camera
@@ -782,8 +878,9 @@ void Engine::drawFrame() {
 	glm::mat4 proj(1.0f);
 
 	proj = glm::perspective(glm::radians(45.0f), (float)ctx->WIDTH / (float)ctx->HEIGHT, 0.1f, 100.0f);
-	model  = glm::translate(model, glm::vec3(0.0,0.0,-1.0f));
-	//model = glm::rotate(model, glm::radians(30.0f), glm::vec3(1, 0, 0));   // rotate around Z
+	model  = glm::translate(model, glm::vec3(0.0,1.0f,-0.5f));
+	model = glm::rotate(model, glm::radians(90.0f), glm::vec3(1, 0, 0));   // rotate around Z
+	model = glm::rotate(model, glm::radians(90.0f), glm::vec3(0, 0, 1));   // rotate around Z
 
 	//model = glm::rotate(model, counter*2, glm::vec3(0, 0.3f, 1));   // rotate around Z
 	cmdBuffer.pushConstants(ctx->_layout, vk::ShaderStageFlagBits::eVertex, 0, sizeof(glm::mat4), &model);
@@ -795,13 +892,9 @@ void Engine::drawFrame() {
 	std::memcpy(base + ctx->currentFrame * btx->strideUBO, &btx->dataUBO, sizeof(btx->dataUBO));
 	cmdBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
 		ctx->_layout, 0, 3, ctx->_descSets.data(), 0, nullptr);
-	cmdBuffer.draw(3*12, 1, 0, 0);
-
-	model = glm::translate(model, glm::vec3(0.0, 2.0, -1.0f));
-	cmdBuffer.pushConstants(ctx->_layout, vk::ShaderStageFlagBits::eVertex, 0, sizeof(glm::mat4), &model);
-	cmdBuffer.draw(3 * 12, 1, 0, 0);
-
-
+	//model = glm::translate(model, glm::vec3(0.0, 2.0, -1.0f));
+	//cmdBuffer.draw(static_cast<uint32_t>(btx->vertices.size()), 1, 0, 0);
+	cmdBuffer.drawIndexed(static_cast<uint32_t>(btx->indices.size()), 1, 0, 0, 0);
 
 
 	cmdBuffer.endRendering();
@@ -853,6 +946,8 @@ void Engine::cleanup() {
 
 
 	vmaDestroyBuffer(btx->_allocator, btx->_vertexBuffer.buffer, btx->_vertexBuffer.alloc);
+	vmaDestroyBuffer(btx->_allocator, btx->_indexBuffer.buffer, btx->_indexBuffer.alloc);
+
 	vmaDestroyBuffer(btx->_allocator, btx->_uniformBuffer.buffer, btx->_uniformBuffer.alloc);
 	vmaDestroyAllocator(btx->_allocator);
 
@@ -916,10 +1011,15 @@ void inputHandler(Camera* camera, float dT,WindowContext* wtx) {
 	float addSpeed = dT * 2.0f;
 	const float cameraSpeed = 3.0f * dT; // 
 
-	if (glfwGetKey(wtx->window, GLFW_KEY_C) == GLFW_PRESS) //forwrad
+	if (glfwGetKey(wtx->window, GLFW_KEY_C) == GLFW_PRESS) {//forwrad
+		camera->dir.y = 0.0f;
 		camera->eye += cameraSpeed * camera->dir;
-	if (glfwGetKey(wtx->window, GLFW_KEY_X) == GLFW_PRESS)//back
+
+	} 
+	if (glfwGetKey(wtx->window, GLFW_KEY_X) == GLFW_PRESS) {//BACK!!!!
+		camera->dir.y = 0.0f;
 		camera->eye -= cameraSpeed * camera->dir;
+	}
 	if (glfwGetKey(wtx->window, GLFW_KEY_Z) == GLFW_PRESS)
 		camera->eye -= glm::normalize(glm::cross(camera->dir, camera->up)) * cameraSpeed;//left
 	if (glfwGetKey(wtx->window, GLFW_KEY_V) == GLFW_PRESS)
@@ -984,7 +1084,9 @@ void Engine::run() {
 	createRenderTargetImages();
 	createTextureImage();
 	createTextureSampler();
+	loadModels();
 	initVertexBuffer();
+	initIndexBuffer();
 	initUniformBuffer();
 	initDescriptors();
 	initGraphicsPipeline();

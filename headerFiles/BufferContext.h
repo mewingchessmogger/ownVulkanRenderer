@@ -1,6 +1,8 @@
 #pragma once
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #define GLM_FORCE_RADIANS 
+#define GLM_ENABLE_EXPERIMENTAL
+#include <glm/gtx/hash.hpp>
 #include <vector>
 #include<glm/vec3.hpp>
 #include<glm/mat4x4.hpp>
@@ -25,15 +27,26 @@ struct AllocatedImage {
     vk::Format format;
     vk::Extent3D extent;
 };
-
 struct Vertex {
     glm::vec3 pos;
     glm::vec3 normal;
     glm::vec2 texCoord;
 
+    bool operator==(const Vertex& other) const {
+        return (pos == other.pos) && (normal == other.normal) && (texCoord == other.texCoord);
+    }
 
 };
 
+namespace std {
+    template<> struct hash<Vertex> {
+        size_t operator()(Vertex const& vertex) const {
+            return ((hash<glm::vec3>()(vertex.pos) ^ (hash<glm::vec2>()(vertex.texCoord) << 1)));
+                //(hash<glm::vec3>()(vertex.normal) << 1)) >> 1) ^
+                
+        }
+    };
+}
 
 
 struct alignas(16) TransformUBO {
@@ -52,7 +65,9 @@ struct BufferContext {
     //BUFFER STUFF
     AllocatedBuffer _stagingBuffer;
     AllocatedBuffer _vertexBuffer;
+    AllocatedBuffer _indexBuffer;
     AllocatedBuffer _uniformBuffer;
+
     VmaAllocator _allocator;
 
 
@@ -125,10 +140,11 @@ struct BufferContext {
     {{ 0.5f, -0.5f,  0.5f}, {0.9f, 0.9f, 0.2f}, {0.0f, 0.0f}},
    
    // bot-right
-    };
+    };         
+                        //key  , value
+    std::unordered_map<Vertex, uint32_t> uniqueVertices{};
 
     std::vector<uint32_t> indices{};
-
 
 
     TransformUBO dataUBO;

@@ -148,9 +148,7 @@ PipelineBuilder& PipelineBuilder::setDescLayout(std::vector<vk::DescriptorSetLay
 
 PipelineBuilder& PipelineBuilder::createPipeLineLayout()
 {
-	if (descriptorSetLayouts.empty()) {
-		throw std::runtime_error(" descsetlayout not created");
-	}
+	
 	pipeLineLayout = device.createPipelineLayout(layoutInfo);
 	return *this;
 }
