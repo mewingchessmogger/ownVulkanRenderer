@@ -10,9 +10,8 @@ namespace vkb {
     struct Instance;
     struct Device;
 }
-
 struct VulkanContext {
-    
+    const int MAX_OBJECTS = 2;
     const int NUM_OF_IMAGES = 2;
     int WIDTH = 1200;
     int HEIGHT = 1200;
@@ -39,8 +38,8 @@ struct VulkanContext {
     std::vector<vk::ImageView> _swapchainImageViews;
     vk::Extent2D _swapchainExtent;
 
-    vk::DescriptorSetLayout _descLayoutUBO;
-    vk::DescriptorSetLayout _descLayoutSampler;
+    vk::DescriptorSetLayout _descSetLayoutUBO;
+    vk::DescriptorSetLayout _descSetLayoutSampler;
 
     vk::DescriptorPool _descPool;
     std::vector<vk::DescriptorSet> _descSets;
@@ -51,6 +50,9 @@ struct VulkanContext {
     std::vector<vk::Fence> _fences;
     std::array<vk::Semaphore, 2> _imageReadySemaphores;
     std::array<vk::Semaphore, 2> _renderFinishedSemaphores;
+
+
+
 
     vk::ShaderModule _vertexShader;
     vk::ShaderModule _fragShader;

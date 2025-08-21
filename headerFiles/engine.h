@@ -1,6 +1,7 @@
 #pragma once
 
 #include <vector>
+
 namespace vk {
     vk::ResultValue<uint32_t> ;
     vk::Semaphore ;
@@ -16,6 +17,7 @@ struct BufferContext;
     struct AllocatedImage;
 
 struct WindowContext;
+
 struct MousePos {
     double x;
     double y;
@@ -24,14 +26,17 @@ struct MousePos {
 struct Camera {
     MousePos oldPos{};
     MousePos newPos{};
-    glm::vec3 eye = glm::vec3(0.0f, 0.0f, 2.0f);
+    glm::vec3 eye = glm::vec3(0.0f, -0.2f, 2.0f);
     glm::vec3 dir = glm::vec3(0.0f, 0.0f, -1.0f);
     glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
     float pitch{};
     float yaw{-90.0f};
 
 
-};
+};    
+
+
+
 class Engine {
 public:
     Engine();
@@ -44,7 +49,7 @@ public:
     WindowContext* wtx = nullptr;
     
     Camera camera{};
-
+  
 private:
     
     void initWindow();
@@ -54,7 +59,7 @@ private:
     void initCommands();
     void initSyncs();
     void loadModels();
-
+    void initGameObjects();
     void createStagingBuffer(unsigned int long byteSize, AllocatedBuffer& stagingBuffer);
     void initVertexBuffer();
     void initIndexBuffer();

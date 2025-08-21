@@ -2,6 +2,7 @@
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #define GLM_FORCE_RADIANS 
 #define GLM_ENABLE_EXPERIMENTAL
+#define GLM_FORCE_DEFAULT_ALIGNED_GENTYPES
 #include <glm/gtx/hash.hpp>
 #include <vector>
 #include<glm/vec3.hpp>
@@ -50,7 +51,6 @@ namespace std {
 
 
 struct alignas(16) TransformUBO {
-    glm::mat4 model;
     glm::mat4 view;
     glm::mat4 proj;
     
@@ -59,14 +59,68 @@ struct alignas(16) TransformUBO {
 
 struct BufferContext {
 
-
    
+    struct indexDataModels {
+        uint32_t startVBO;
+        uint32_t endVBO;
+
+        uint32_t startIBO;
+        uint32_t endIBO;
+    };
+    
+    struct IDGenerator{
+        std::unordered_map<size_t, indexDataModels> modelMapper;
+        std::hash<std::string> hasher;
+        
+    };
+
+
+    struct GameObj {
+        glm::vec3 pos = { 0.0f,0.0f,0.0f };
+        glm::vec3 rot = { 0.0f,0.0f,0.0f };
+        glm::vec3 scale = { 1.0f,1.0f,1.0f };
+
+        size_t modelID;
+        uint32_t objectIndex;
+        int usingTexture = 0;
+        glm::vec3 color = glm::vec3(0.2f);
+        //std::vector<AllocatedBuffer> uniBuffers{};
+        std::vector<vk::DescriptorSet> descSets{};
+
+
+        glm::mat4 getModelMatrix() const {
+            glm::mat4 model = glm::mat4(1.0f);
+            model = glm::translate(model, pos);
+            model = glm::rotate(model, rot.x, glm::vec3(1.0f, 0.0f, 0.0f));
+            model = glm::rotate(model, rot.y, glm::vec3(0.0f, 1.0f, 0.0f));
+            model = glm::rotate(model, rot.z, glm::vec3(0.0f, 0.0f, 1.0f));
+            model = glm::scale(model, scale);
+            return model;
+        };
+    };
+    struct pushConstants {
+
+        glm::mat4 model;
+        glm::vec3 color;
+        int useTexture;
+        int indexInIBO;
+
+    };
+
+    static const int NUM_OF_IMAGES = 2;
+    std::vector<indexDataModels> offsetOfModels{};
+    IDGenerator ComposerID;
+    std::vector<std::string> modPaths;
+
+    static const int MAX_OBJECTS = 3;
+    std::vector<GameObj> gameObjs{};
+    AllocatedBuffer _GameObjUBO;
+
 
     //BUFFER STUFF
     AllocatedBuffer _stagingBuffer;
     AllocatedBuffer _vertexBuffer;
     AllocatedBuffer _indexBuffer;
-    AllocatedBuffer _uniformBuffer;
 
     VmaAllocator _allocator;
 
@@ -84,63 +138,7 @@ struct BufferContext {
 
 
     //BUFFER DATA : vertex, rgb , texCoord
-    std::vector<Vertex> vertices = {
-
-    {{-0.5f, -0.5f,  0.5f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}}, // bottom-left
-    {{ 0.5f, -0.5f,  0.5f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}}, // bottom-right
-    {{ 0.5f,  0.5f,  0.5f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}}, // top-right
-
-    {{-0.5f, -0.5f,  0.5f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}}, // bottom-left
-    {{ 0.5f,  0.5f,  0.5f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}}, // top-right
-    {{-0.5f,  0.5f,  0.5f}, {1.0f, 1.0f, 0.0f}, {0.0f, 1.0f}}, // top-left
-
-    // Back face
-    {{-0.5f, -0.5f, -0.5f}, {1.0f, 0.0f, 1.0f}, {1.0f, 0.0f}}, // bottom-right
-    {{-0.5f,  0.5f, -0.5f}, {0.0f, 1.0f, 1.0f}, {1.0f, 1.0f}}, // top-right
-    {{ 0.5f,  0.5f, -0.5f}, {0.5f, 0.5f, 0.5f}, {0.0f, 1.0f}}, // top-left
-
-    {{-0.5f, -0.5f, -0.5f}, {1.0f, 0.0f, 1.0f}, {1.0f, 0.0f}}, // bottom-right
-    {{ 0.5f,  0.5f, -0.5f}, {0.5f, 0.5f, 0.5f}, {0.0f, 1.0f}}, // top-left
-    {{ 0.5f, -0.5f, -0.5f}, {0.2f, 0.8f, 0.2f}, {0.0f, 0.0f}}, // bottom-left
-
-    // Left face
-    {{-0.5f, -0.5f, -0.5f}, {0.7f, 0.1f, 0.3f}, {0.0f, 0.0f}},
-    {{-0.5f, -0.5f,  0.5f}, {0.7f, 0.1f, 0.3f}, {1.0f, 0.0f}},
-    {{-0.5f,  0.5f,  0.5f}, {0.7f, 0.1f, 0.3f}, {1.0f, 1.0f}},
-
-    {{-0.5f, -0.5f, -0.5f}, {0.7f, 0.1f, 0.3f}, {0.0f, 0.0f}},
-    {{-0.5f,  0.5f,  0.5f}, {0.7f, 0.1f, 0.3f}, {1.0f, 1.0f}},
-    {{-0.5f,  0.5f, -0.5f}, {0.7f, 0.1f, 0.3f}, {0.0f, 1.0f}},
-
-    // Right face
-    {{ 0.5f, -0.5f, -0.5f}, {0.1f, 0.7f, 0.3f}, {1.0f, 0.0f}},
-    {{ 0.5f,  0.5f,  0.5f}, {0.1f, 0.7f, 0.3f}, {0.0f, 1.0f}},
-    {{ 0.5f, -0.5f,  0.5f}, {0.1f, 0.7f, 0.3f}, {0.0f, 0.0f}},
-
-    {{ 0.5f, -0.5f, -0.5f}, {0.1f, 0.7f, 0.3f}, {1.0f, 0.0f}},
-    {{ 0.5f,  0.5f, -0.5f}, {0.1f, 0.7f, 0.3f}, {1.0f, 1.0f}},
-    {{ 0.5f,  0.5f,  0.5f}, {0.1f, 0.7f, 0.3f}, {0.0f, 1.0f}},
-
-    // Top face
-    {{-0.5f,  0.5f, -0.5f}, {0.3f, 0.3f, 0.9f}, {0.0f, 1.0f}},
-    {{-0.5f,  0.5f,  0.5f}, {0.3f, 0.3f, 0.9f}, {0.0f, 0.0f}},
-    {{ 0.5f,  0.5f,  0.5f}, {0.3f, 0.3f, 0.9f}, {1.0f, 0.0f}},
-
-    {{-0.5f,  0.5f, -0.5f}, {0.3f, 0.3f, 0.9f}, {0.0f, 1.0f}},
-    {{ 0.5f,  0.5f,  0.5f}, {0.3f, 0.3f, 0.9f}, {1.0f, 0.0f}},
-    {{ 0.5f,  0.5f, -0.5f}, {0.3f, 0.3f, 0.9f}, {1.0f, 1.0f}},
-
-    // Bottom face
-    {{-0.5f, -0.5f, -0.5f}, {0.9f, 0.9f, 0.2f}, {1.0f, 1.0f}},
-    {{ 0.5f, -0.5f,  0.5f}, {0.9f, 0.9f, 0.2f}, {0.0f, 0.0f}},
-    {{-0.5f, -0.5f,  0.5f}, {0.9f, 0.9f, 0.2f}, {1.0f, 0.0f}},
-
-    {{-0.5f, -0.5f, -0.5f}, {0.9f, 0.9f, 0.2f}, {1.0f, 1.0f}},
-    {{ 0.5f, -0.5f, -0.5f}, {0.9f, 0.9f, 0.2f}, {0.0f, 1.0f}},
-    {{ 0.5f, -0.5f,  0.5f}, {0.9f, 0.9f, 0.2f}, {0.0f, 0.0f}},
-   
-   // bot-right
-    };         
+    std::vector<Vertex> vertices = {};         
                         //key  , value
     std::unordered_map<Vertex, uint32_t> uniqueVertices{};
 
@@ -187,8 +185,6 @@ struct BufferContext {
 
         return { posAttrib,normAttrib,texCoordAttrib };
     }
-
-
 
 
 };
