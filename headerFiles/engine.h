@@ -58,6 +58,7 @@ private:
     void initAllocator();
     void initCommands();
     void initSyncs();
+    void loadModelsGLTF();
     void loadModels();
     void initGameObjects();
     void createStagingBuffer(unsigned int long byteSize, AllocatedBuffer& stagingBuffer);

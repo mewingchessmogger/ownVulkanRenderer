@@ -1,4 +1,5 @@
 #pragma once
+#define _CRT_SECURE_NO_WARNINGS
 #include "vk_mem_alloc.h"
 #include <vulkan/vulkan.hpp>
 #include <VkBootstrap.h>
@@ -8,3 +9,6 @@
 #include <stb_image.h>
 #include<tiny_obj_loader.h>
 #include <pipelineBuilder.h>
+#include <tinygltf.h>
+#include <json.hpp>
+#include<stb_image_write.h>

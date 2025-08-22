@@ -384,13 +384,144 @@ void Engine::createStagingBuffer(unsigned int long byteSize, AllocatedBuffer& st
 
 }
 
+void Engine::loadModelsGLTF(){
+	tinygltf::Model model;
+	tinygltf::TinyGLTF loader;
 
+	std::string err;
+	std::string warn;
+
+	std::vector<std::string> modPaths{"models/dragon.gltf" };// , "models/stanfordBunny" 
+
+	bool ret = loader.LoadASCIIFromFile(&model, &err, &warn, modPaths[0]);
+
+	if (!warn.empty()) {
+		std::cout << "glTfw warning: " << warn << "\n";
+	}
+	if (!err.empty()) {
+		std::cout << "glTfw error: " << err << "\n";
+	}
+
+
+	if (!ret) {
+		throw std::runtime_error("gltf not working bruh");
+	}
+	BufferContext::indexDataModels data{};
+
+
+	data.startVBO = btx->vertices.size();
+	data.startIBO = btx->indices.size();
+
+
+
+	for (const auto& mesh : model.meshes) {
+		for (const auto& primitive : mesh.primitives) {
+			uint32_t baseVertex = static_cast<uint32_t>(btx->vertices.size());
+
+
+			// the vertex positions
+			const tinygltf::Accessor& posAccessor = model.accessors[primitive.attributes.at("POSITION")];
+			const tinygltf::BufferView& posBufferView = model.bufferViews[posAccessor.bufferView];
+			const tinygltf::Buffer& posBuffer = model.buffers[posBufferView.buffer];
+
+			const float* posData = reinterpret_cast<const float*>(
+				&posBuffer.data[posBufferView.byteOffset + posAccessor.byteOffset]);
+
+			//the normals 
+			const float* normalData = nullptr;
+			if (primitive.attributes.find("NORMAL") != primitive.attributes.end()) {
+				const tinygltf::Accessor& normalAccessor = model.accessors.at(primitive.attributes.at("NORMAL"));
+				const tinygltf::BufferView& normalView = model.bufferViews[normalAccessor.bufferView];
+				const tinygltf::Buffer& normalBuffer = model.buffers[normalView.buffer];
+				normalData = reinterpret_cast<const float*>(
+					&normalBuffer.data[normalView.byteOffset + normalAccessor.byteOffset]);
+			}
+			
+
+
+			//get texture coordinates if exist
+			const float* texCoordData = nullptr;
+			if (primitive.attributes.find("TEXCOORD_0") != primitive.attributes.end()) {
+				const tinygltf::Accessor& texCoordAccessor = model.accessors.at(primitive.attributes.at("TEXCOORD_0"));
+				const tinygltf::BufferView& texCoordView = model.bufferViews[texCoordAccessor.bufferView];
+				const tinygltf::Buffer& texCoordBuffer = model.buffers[texCoordView.buffer];
+				texCoordData = reinterpret_cast<const float*>(
+					&texCoordBuffer.data[texCoordView.byteOffset + texCoordAccessor.byteOffset]);
+			}
+
+			for (size_t i{}; i < posAccessor.count; i++) {
+				Vertex vertex{};
+
+				vertex.pos = { posData[3 * i + 0], posData[3 * i + 1], posData[3 * i + 2] };
+				
+				vertex.normal = normalData ? glm::vec3(normalData[3 * i + 0], normalData[3 * i + 1], normalData[3 * i + 2]) : glm::vec3(0.0f);
+
+				vertex.texCoord = texCoordData ? glm::vec2(texCoordData[2 * i + 0], texCoordData[2 * i + 1]) : glm::vec2(0.0f);
+
+				btx->vertices.push_back(vertex);
+
+			}
+
+		
+
+
+			//the indices
+			const tinygltf::Accessor& indexAccessor = model.accessors[primitive.indices];
+			const tinygltf::BufferView& indexBufferView = model.bufferViews[indexAccessor.bufferView];
+			const tinygltf::Buffer& indexBuffer = model.buffers[indexBufferView.buffer];
+			const unsigned char* indexData = &indexBuffer.data[indexBufferView.byteOffset + indexAccessor.byteOffset];
+
+				
+			// Handle different index component types
+			if (indexAccessor.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT) {
+				const uint16_t* indices16 = reinterpret_cast<const uint16_t*>(indexData);
+				for (size_t i = 0; i < indexAccessor.count; i++) {
+					btx->indices.push_back(baseVertex + indices16[i]);
+				}
+			}
+			else if (indexAccessor.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT) {
+				const uint32_t* indices32 = reinterpret_cast<const uint32_t*>(indexData);
+				for (size_t i = 0; i < indexAccessor.count; i++) {
+					btx->indices.push_back(baseVertex + indices32[i]);
+				}
+			}
+			else if (indexAccessor.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE) {
+				const uint8_t* indices8 = reinterpret_cast<const uint8_t*>(indexData);
+				for (size_t i = 0; i < indexAccessor.count; i++) {
+					btx->indices.push_back(baseVertex + indices8[i]);
+				}
+			}
+
+
+			
+
+
+
+
+
+		}
+
+
+	}
+
+	data.endVBO = btx->vertices.size();
+	data.endIBO = btx->indices.size();
+
+	size_t id = btx->ComposerID.hasher("models/dragon.gltf");
+
+	btx->ComposerID.modelMapper[id] = data;
+	std::cout << "gltf!!!\n";
+	std::cout << "model/dragon.gltf" << " ID: " << id << "--- VBO start/end: " << data.startVBO << ", " << data.endVBO << " ---IBO start/end: " << data.startIBO << ", " << data.endIBO << "\n";
+
+
+}
 void Engine::loadModels() {
 
 
-	std::vector<std::string> modPaths{"models/cube.obj", "models/stanfordBunny.obj","models/viking_room.obj"};// , "models/stanfordBunny" 
+	std::vector<std::string> modPaths{ "models/cube.obj", "models/stanfordBunny.obj","models/viking_room.obj"};// , "models/stanfordBunny" 
 	btx->modPaths = modPaths;
-
+	//btx->vertices.reserve(446228);
+	//btx->indices.reserve(2640342);
 	for (const auto& path : modPaths) {
 
 		tinyobj::attrib_t attrib;
@@ -404,8 +535,10 @@ void Engine::loadModels() {
 		//save vertex start vertex end
 		BufferContext::indexDataModels data{};
 
+
 		data.startVBO= btx->vertices.size();
 		data.startIBO = btx->indices.size();
+		
 
 
 		for (auto& shape : shapes) {
@@ -426,7 +559,7 @@ void Engine::loadModels() {
 						1.0f - attrib.texcoords[2 * index.texcoord_index + 1] };
 
 				}
-
+				
 				if (index.normal_index >= 0) {
 					vertex.normal = {
 						attrib.normals[3 * index.normal_index + 0],
@@ -434,12 +567,10 @@ void Engine::loadModels() {
 						attrib.normals[3 * index.normal_index + 2]
 					};
 				}
-				else {
-					vertex.normal = { 0.0f, 0.0f, 0.0f };
-				}
+				
 
 				if (btx->uniqueVertices.count(vertex) == 0) {
-					btx->uniqueVertices[vertex] = static_cast<uint32_t>(btx->vertices.size()-data.startVBO);
+					btx->uniqueVertices[vertex] = static_cast<uint32_t>(btx->vertices.size() - data.startVBO);
 					btx->vertices.push_back(vertex);
 
 				}
@@ -459,7 +590,7 @@ void Engine::loadModels() {
 		
 		btx->ComposerID.modelMapper[id] = data;
 		
-		std::cout << path << " ID: "<< id << "--- VBO start/end: " << data.startVBO << ", " << data.endVBO << " ---IBO start/end: " << data.startIBO << ", " << data.endIBO << "\n";
+		std::cout << "OBJ!!: " << path << " ID: " << id << "--- VBO start/end: " << data.startVBO << ", " << data.endVBO << " ---IBO start/end: " << data.startIBO << ", " << data.endIBO << "\n";
 
 	}
 
@@ -471,7 +602,7 @@ void Engine::initGameObjects() {
 
 	std::hash<std::string> hasher;
 
-	btx->gameObjs.resize(3);
+	btx->gameObjs.resize(4);
 	
 	btx->gameObjs[0].pos = { -1.0f, 0.2f, 0.0f };
 	btx->gameObjs[0].rot = { glm::radians(180.0f), 0.0f, 0.0f };
@@ -482,7 +613,7 @@ void Engine::initGameObjects() {
 	btx->gameObjs[1].pos = { 0.0f, 0.0f, 0.0f };
 	btx->gameObjs[1].rot = { glm::radians(180.0f), glm::radians(180.0f), 0.0f };
 	btx->gameObjs[1].scale = { 2.0f,2.0f,2.0f };
-	btx->gameObjs[1].color = { 1.0f,0.0f,0.0f };
+	btx->gameObjs[1].color = { 1.0f,1.0f,1.0f };
 	btx->gameObjs[1].modelID = hasher("models/stanfordBunny.obj");
 
 	// Object 2 - Left
@@ -493,6 +624,14 @@ void Engine::initGameObjects() {
 	btx->gameObjs[2].scale = { 0.5f,0.5f,0.5f };
 	btx->gameObjs[2].usingTexture = 1;
 	btx->gameObjs[2].modelID = hasher("models/viking_room.obj");
+
+
+	btx->gameObjs[3].pos = { -1.0f, 0.2f, 1.0f };
+	btx->gameObjs[3].rot = { glm::radians(180.0f), glm::radians(270.0f), 0.0f };
+	btx->gameObjs[3].scale = { 4.0f,4.0f,4.0f };
+	btx->gameObjs[3].color = { 1.0f,1.0f, 1.0f};
+	btx->gameObjs[3].modelID = hasher("models/dragon.gltf");
+
 	//btx->gameObjs[1].pos = { -1.0f, 0.0f, -1.0f };
 	//btx->gameObjs[1].rot = { glm::radians(180.0f), glm::radians(180.0f), 0.0f };
 	//btx->gameObjs[1].scale = { 3.0f, 3.0f,3.0f };
@@ -1159,6 +1298,7 @@ void Engine::run() {
 	createRenderTargetImages();
 	createTextureImage();
 	createTextureSampler();
+	loadModelsGLTF();
 	loadModels();
 	initGameObjects();
 	initVertexBuffer();
