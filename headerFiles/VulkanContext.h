@@ -13,7 +13,7 @@ namespace vkb {
 struct VulkanContext {
     const int MAX_OBJECTS = 2;
     const int NUM_OF_IMAGES = 2;
-    int WIDTH = 1200;
+    int WIDTH = 1600;
     int HEIGHT = 1200;
     const bool bUseValidationLayers = true;
     bool frameBufferResized = false;
@@ -45,8 +45,13 @@ struct VulkanContext {
     std::vector<vk::DescriptorSet> _descSets;
     vk::CommandPool _cmdPool;
     std::vector<vk::CommandBuffer> _cmdBuffers;
+    
     vk::Pipeline _graphicsPipeline;
     vk::PipelineLayout _layout;
+    vk::Pipeline _skyboxPipeline;
+    vk::PipelineLayout _skyboxLayout;
+
+
     std::vector<vk::Fence> _fences;
     std::array<vk::Semaphore, 2> _imageReadySemaphores;
     std::array<vk::Semaphore, 2> _renderFinishedSemaphores;
@@ -65,7 +70,7 @@ struct VulkanContext {
 
     float deltaT;
 
-    uint32_t imageIndex{};
+    uint32_t currentImgIndex{};
     int currentFrame{};
 };
 

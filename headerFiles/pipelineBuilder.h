@@ -11,7 +11,7 @@ public:
 		device = dev;
 		return *this;
 	}
-	PipelineBuilder& setDynRendering(int clrCount, std::vector<vk::Format> clrFs, vk::Format dphFormat);
+	PipelineBuilder& setDynRendering(int clrCount, std::vector<vk::Format> clrFs, vk::Format dphFormat = vk::Format::eUndefined);
 	PipelineBuilder& setShaderStages(const std::string vertPath, const std::string fragPath);
 	PipelineBuilder& setVertexInputInfo(std::vector<vk::VertexInputBindingDescription>& bindings,
 		std::vector<vk::VertexInputAttributeDescription>& attribs);
@@ -25,9 +25,10 @@ public:
 	PipelineBuilder& setPCRange(size_t sizePC, int offset = 0, vk::ShaderStageFlags stage = vk::ShaderStageFlagBits::eVertex);
 	PipelineBuilder& setDescLayout(std::vector<vk::DescriptorSetLayout> descLayouts);
 	PipelineBuilder& createPipeLineLayout();
-	PipelineBuilder& setDepthStencilState();
+	PipelineBuilder& setDepthStencilState(uint32_t depthTestEnable = vk::True, uint32_t depthWriteEnable = vk::True);
 	PipelineBuilder& createPipeline();
 	vk::Pipeline getPipeline();
+	void resetBuild();
 	vk::PipelineLayout pipeLineLayout;
 	vk::Viewport viewport{};
 	

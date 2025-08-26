@@ -55,7 +55,6 @@ private:
     void initWindow();
     void initInstance();
     void initDevice();
-    void initAllocator();
     void initCommands();
     void initSyncs();
     void loadModelsGLTF();
@@ -75,21 +74,32 @@ private:
                     int imageCount, 
                     std::vector<AllocatedImage>& images, 
                     vk::ImageAspectFlags aspectMask, 
-                    std::string type);
+                    std::string type, 
+                    vk::ImageViewType viewtype = vk::ImageViewType::e2D,uint32_t arrLayers = 1,bool cubeCompatible = false);
     
 
-
+    void HandlerIO(Camera &camera);
     void createRenderTargetImages();
     void rethinkDepthImages();
     void createDepthImages();
     void createTextureImage();
+    void createCubeImage();
     void createSwapchain();
     void rethinkSwapchain();
     bool isValidSwapchain(vk::ResultValue<uint32_t> imgResult, vk::Semaphore imageReadySemaphore);
     void clearSwapchain();
-    std::vector<vk::CommandBuffer> createCommandBuffers(vk::CommandBufferAllocateInfo allocInfo, uint32_t cmdBufferCount);
-    
+    void startup();
+
+    bool acquiredFrameImage();
+    void startRecFrame();
+    void preFX();
+    void recordDrawCalls();
+    void postFX();
+    void concludeFrame();
+
+    void recordCommandBuffer(vk::CommandBuffer cmdBuffer,uint32_t imageIndex);
     void drawFrame();
+
     void cleanup();
     
 

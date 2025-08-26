@@ -50,13 +50,20 @@ namespace std {
     };
 }
 
+struct Lights {
+    glm::vec4 position{};
+    glm::vec4 color{};
+};
+
 
 struct alignas(16) TransformUBO {
     glm::mat4 view;
     glm::mat4 proj;
-    
-
+    std::array<Lights,8> lights{};
+    alignas(16) int currLightCount{};
 };
+
+
 
 struct BufferContext {
 
@@ -99,6 +106,8 @@ struct BufferContext {
             return model;
         };
     };
+
+
     struct pushConstants {
 
         glm::mat4 model;
@@ -108,6 +117,14 @@ struct BufferContext {
 
     };
 
+    struct skyboxPC {
+        glm::mat4 invView;
+        glm::mat4 invProj;
+    };
+
+
+
+
     static const int NUM_OF_IMAGES = 2;
     std::vector<indexDataModels> offsetOfModels{};
     IDGenerator ComposerID;
@@ -115,8 +132,9 @@ struct BufferContext {
 
     static const int MAX_OBJECTS = 3;
     std::vector<GameObj> gameObjs{};
+    
     AllocatedBuffer _GameObjUBO;
-
+    std::vector<GameObj> lightObjs{};
 
     //BUFFER STUFF
     AllocatedBuffer _stagingBuffer;
@@ -132,7 +150,7 @@ struct BufferContext {
     //std::vector<vk::ImageView> _renderTargetViews;
     
     std::vector<AllocatedImage> _txtImages;
-    
+    std::vector<AllocatedImage> _cubeImages;
     std::vector<AllocatedImage> _depthImages;
     
 

@@ -5,11 +5,10 @@
 
 
 
-PipelineBuilder& PipelineBuilder::setDynRendering(int clrCount, std::vector<vk::Format> clrFs, vk::Format dphFormat) {
+PipelineBuilder& PipelineBuilder::setDynRendering(int clrCount, std::vector<vk::Format> clrFs, vk::Format dphFormat ) {
 	
 	clrFormats = clrFs;
 	depthFormat = dphFormat;
-
 	dynRenderInfo
 		.setColorAttachmentCount(1)
 		.setPColorAttachmentFormats(clrFormats.data())
@@ -153,12 +152,12 @@ PipelineBuilder& PipelineBuilder::createPipeLineLayout()
 	return *this;
 }
 
-PipelineBuilder& PipelineBuilder::setDepthStencilState()
+PipelineBuilder& PipelineBuilder::setDepthStencilState(uint32_t depthTestEnable, uint32_t depthWriteEnable)
 {
 	depthInfo
-		.setDepthTestEnable(vk::True)
-		.setDepthWriteEnable(vk::True)
-		.setDepthCompareOp(vk::CompareOp::eLess)//if the incoming depth is "less" than stored depth we store the incoming fragment otherwise discard
+		.setDepthTestEnable(depthTestEnable)
+		.setDepthWriteEnable(depthWriteEnable)
+		.setDepthCompareOp(vk::CompareOp::eLessOrEqual)//if the incoming depth is "less" than stored depth we store the incoming fragment otherwise discard
 		.setDepthBoundsTestEnable(vk::False)//some obscure thing
 		.setStencilTestEnable(vk::False);//what is stencils duhguh
 	//.setFront() //these two need to be set if stenciltest is enabled!
@@ -199,4 +198,47 @@ vk::Pipeline PipelineBuilder::getPipeline() {
 
 	
 	return pipeline;
+}
+void PipelineBuilder::resetBuild() {
+	clrFormats.clear();
+	depthFormat = vk::Format::eUndefined;
+
+	bindings.clear();
+	attribs.clear();
+	vertexInputInfo = vk::PipelineVertexInputStateCreateInfo{};
+
+	assInfo = vk::PipelineInputAssemblyStateCreateInfo{};
+
+	viewportInfo = vk::PipelineViewportStateCreateInfo{};
+	scissor = vk::Rect2D{};
+	dynamicStates = {
+		vk::DynamicState::eViewport,
+		vk::DynamicState::eScissor
+	};
+	dynamicState = vk::PipelineDynamicStateCreateInfo{}.setDynamicStates(dynamicStates);
+
+	razInfo = vk::PipelineRasterizationStateCreateInfo{};
+	multisampleInfo = vk::PipelineMultisampleStateCreateInfo{};
+	depthInfo = vk::PipelineDepthStencilStateCreateInfo{};
+	stencilInfo = vk::PipelineDepthStencilStateCreateInfo{};
+
+	attachment = vk::PipelineColorBlendAttachmentState{};
+	blendInfo = vk::PipelineColorBlendStateCreateInfo{};
+
+	shaderStages.clear();
+	vertShader = nullptr;
+	fragShader = nullptr;
+
+	pcRange = vk::PushConstantRange{};
+	descriptorSetLayouts.clear();
+	layoutInfo = vk::PipelineLayoutCreateInfo{};
+
+	dynRenderInfo = vk::PipelineRenderingCreateInfo{};
+	createPipelineInfo = vk::GraphicsPipelineCreateInfo{};
+	pipeline = nullptr;
+
+	pipelineCreated = false;
+	pipeLineLayout = vk::PipelineLayout{};
+	viewport = vk::Viewport{};
+
 }
