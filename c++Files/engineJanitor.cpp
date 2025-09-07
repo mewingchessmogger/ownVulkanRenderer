@@ -21,15 +21,19 @@ void Engine::cleanup() {
 	ctx->_device.destroyDescriptorSetLayout(ctx->_descSetLayoutUBO);
 	ctx->_device.destroyDescriptorPool(ctx->_descPool);//sets are destroyed within pool 
 
-	ctx->_device.destroyImageView(btx->_renderTargets[0].view);
-	ctx->_device.destroyImageView(btx->_renderTargets[1].view);
-
+	
 
 	for (int i{}; i < ctx->NUM_OF_IMAGES; i++) {
+		ctx->_device.destroyImageView(btx->_renderTargets[i].view);
+		ctx->_device.destroyImageView(btx->_depthImages[i].view);
+
 		vmaDestroyImage(btx->_allocator, btx->_renderTargets[i].image, btx->_renderTargets[i].alloc);
 		vmaDestroyImage(btx->_allocator, btx->_depthImages[i].image, btx->_depthImages[i].alloc);
 
 	}
+
+	ctx->_device.destroyImageView(btx->_cubeImages[0].view);
+	ctx->_device.destroyImageView(btx->_txtImages[0].view);
 
 	vmaDestroyImage(btx->_allocator, btx->_txtImages[0].image, btx->_txtImages[0].alloc);
 	vmaDestroyImage(btx->_allocator, btx->_cubeImages[0].image, btx->_cubeImages[0].alloc);
@@ -40,9 +44,13 @@ void Engine::cleanup() {
 
 	vmaDestroyBuffer(btx->_allocator, btx->_GameObjUBO.buffer, btx->_GameObjUBO.alloc);
 	vmaDestroyAllocator(btx->_allocator);
+	
+
 
 	ctx->_device.destroyPipelineLayout(ctx->_layout);
 	ctx->_device.destroyPipeline(ctx->_graphicsPipeline);
+	ctx->_device.destroyPipelineLayout(ctx->_skyboxLayout);
+	ctx->_device.destroyPipeline(ctx->_skyboxPipeline);
 
 	for (int i{}; i < ctx->NUM_OF_IMAGES; i++) {
 		ctx->_device.destroyFence(ctx->_fences[i]);

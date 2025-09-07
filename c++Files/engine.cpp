@@ -232,8 +232,8 @@ void Engine::initGameObjects() {
 
 	btx->gameObjs[0].pos = { -1.0f, 0.2f, 0.0f };
 	btx->gameObjs[0].rot = { glm::radians(180.0f), 0.0f, 0.0f };
-	btx->gameObjs[0].scale = { 5.0f,0.2f,5.0f };
-	btx->gameObjs[0].color = { 0.0f,0.3f,0.0f };
+	btx->gameObjs[0].scale = { 50.0f,0.2f,50.0f };
+	btx->gameObjs[0].color = { 0.0f,0.0f,0.1f };
 	btx->gameObjs[0].modelID = hasher("models/cube.obj");
 
 	btx->gameObjs[1].pos = { 0.0f, 0.0f, 0.0f };
@@ -252,18 +252,25 @@ void Engine::initGameObjects() {
 	btx->gameObjs[2].modelID = hasher("models/viking_room.obj");
 
 
-	btx->gameObjs[3].pos = { -1.0f, 0.2f, 1.0f };
-	btx->gameObjs[3].rot = { glm::radians(180.0f), glm::radians(180.0f), 0.0f };
+	btx->gameObjs[3].pos = { 1.0f, 0.2f, 1.0f };
+	btx->gameObjs[3].rot = { glm::radians(180.0f), glm::radians(0.0f),0.0f};
 	btx->gameObjs[3].scale = { 4.0f,4.0f,4.0f };
-	btx->gameObjs[3].color = { 0.4f,0.4f,0.4f };
+	btx->gameObjs[3].color = { 1.0f,1.0f,1.0f };
 	btx->gameObjs[3].modelID = hasher("models/dragon.gltf");
 
 
-	btx->lightObjs[0].pos = { 5.0f, -4.0f,-10.0f };
+	btx->lightObjs[0].pos = { -10.0f, 0.0f,5.0f};
 	btx->lightObjs[0].rot = { 0.0f,0.0f, 0.0f };
 	btx->lightObjs[0].scale = {1.0f,1.0f,1.0f };
 	btx->lightObjs[0].color = { 1.0f,1.0f, 1.0f };
 	btx->lightObjs[0].modelID = hasher("models/cube.obj");
+
+	btx->gameObjs[4].pos = btx->lightObjs[0].pos;
+	btx->gameObjs[4].rot = { 0.0f,0.0f, 0.0f };
+	btx->gameObjs[4].scale = { 1.0f,1.0f,1.0f };
+	btx->gameObjs[4].color = { 1.0f,1.0f, 1.0f };
+	btx->gameObjs[4].modelID = hasher("models/cube.obj");
+
 
 
 	//btx->gameObjs[1].pos = { -1.0f, 0.0f, -1.0f };
@@ -589,47 +596,24 @@ void Engine::recordDrawCalls() {
 	vk::CommandBuffer cmdBuffer = ctx->_cmdBuffers[ctx->currentFrame];//this is indx currentFrame cuz the fence above 
 	auto imageIndex = ctx->currentImgIndex;
 
-
-	//vkutils::transitionImage(ctx->_swapchainImages[ctx->currentImgIndex], cmdBuffer, vk::ImageLayout::eUndefined, vk::ImageLayout::eColorAttachmentOptimal);
-
-	//vk::ClearColorValue clr{};	//sinf(counter)
-	//clr.setFloat32({ 0.0f, 0.0f, 0.3f, 1.0f });
-
-	////setup for dynrenderin
-	//vk::RenderingAttachmentInfo attachInfo{};
-	//attachInfo
-	//	.setImageView(ctx->_swapchainImageViews[imageIndex])
-	//	.setImageLayout(vk::ImageLayout::eColorAttachmentOptimal)
-	//	.setClearValue(clr)
-	//	.setLoadOp(vk::AttachmentLoadOp::eClear)
-	//	.setStoreOp(vk::AttachmentStoreOp::eStore);
-
-
-	//vk::RenderingAttachmentInfo depthInfo{};
-	//depthInfo
-	//	.setImageView(btx->_depthImages[imageIndex].view)
-	//	.setImageLayout(vk::ImageLayout::eDepthAttachmentOptimal)
-	//	.setClearValue(vk::ClearDepthStencilValue{ 1,0 })
-	//	.setLoadOp(vk::AttachmentLoadOp::eClear)
-	//	.setStoreOp(vk::AttachmentStoreOp::eStore);
-
-	//vk::RenderingInfoKHR renderInfo{};
-
-	//vk::Rect2D area;
-	//area.setOffset(vk::Offset2D(0, 0)).setExtent(ctx->_swapchainExtent);
-	//renderInfo
-	//	.setRenderArea(area)
-	//	.setLayerCount(1)
-	//	.setColorAttachments(attachInfo)
-	//	.setPDepthAttachment(&depthInfo);
-
-	//cmdBuffer.beginRendering(renderInfo);
-
-
-
 	cmdBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, ctx->_graphicsPipeline);
 	cmdBuffer.setViewport(0, vk::Viewport(0.0f, 0.0f, float(ctx->_swapchainExtent.width), float(ctx->_swapchainExtent.height), 0.0f, 1.0f));
 	cmdBuffer.setScissor(0, vk::Rect2D(vk::Offset2D(0, 0), ctx->_swapchainExtent));
+	
+	#include <iomanip> // for std::fixed and std::setprecision
+	static double lastTime = 0;
+	auto curTime = glfwGetTime();
+	if ((curTime - lastTime) >= 4.0) {
+		lastTime = curTime;
+
+		std::cout << "-----------\n";
+		std::cout << std::fixed << std::setprecision(2);
+		std::cout << "POS: (" << camera.eye.x << ", " << camera.eye.y << ", " << camera.eye.z << ")\n";
+		std::cout << "DIR: (" << camera.dir.x << ", " << camera.dir.y << ", " << camera.dir.z << ")\n";
+		std::cout << "-----------\n\n\n";
+	}
+
+	
 	vk::DeviceSize offset{};
 	//camera
 	glm::mat4 view(1.0f);
@@ -641,16 +625,12 @@ void Engine::recordDrawCalls() {
 	static glm::vec3 direction{};  // where the camera looks
 
 	direction = camera.dir;
+	
+	
+
 	view = glm::lookAt(eye, eye + direction, camera.up);
-
 	btx->dataUBO.view = view;
-	//drawing
-
-
 	proj = glm::perspective(glm::radians(45.0f), (float)ctx->WIDTH / (float)ctx->HEIGHT, 0.1f, 100.0f);
-	//model  = glm::translate(model, glm::vec3(0.0,1.0f,-0.5f));
-	//model = glm::rotate(model, glm::radians(90.0f), glm::vec3(1, 0, 0));   // rotate around Z
-	//model = glm::rotate(model, glm::radians(90.0f), glm::vec3(0, 0, 1));   // rotate around Z
 	btx->dataUBO.proj = proj;
 
 
@@ -672,9 +652,11 @@ void Engine::recordDrawCalls() {
 		Lights light{};
 
 		light.position = glm::vec4(btx->lightObjs[i].pos, 1.0f);
-		light.position.x = light.position.x;
 		light.color = glm::vec4(1.0f);
+														//.w unsused whatevs
+		light.direction = glm::vec4(-0.80, -0.35, 0.54,0.0f);
 		ubo.lights[i] = light;
+
 
 	}
 
@@ -686,19 +668,14 @@ void Engine::recordDrawCalls() {
 	uint32_t dynOffset = static_cast<uint32_t>(offsetUBO);
 	cmdBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
 		ctx->_layout, 0, 2, ctx->_descSets.data(), 1, &dynOffset);
-	
+
+
 
 
 	for (int i{}; i < btx->gameObjs.size(); i++) {
 		auto& obj = btx->gameObjs[i];
-
 		BufferContext::indexDataModels modData = btx->ComposerID.modelMapper[obj.modelID];
-
 		BufferContext::pushConstants pc{};
-
-
-
-
 		pc.model = obj.getModelMatrix();
 		pc.color = obj.color;
 		pc.useTexture = obj.usingTexture;

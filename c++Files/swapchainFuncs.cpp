@@ -7,7 +7,7 @@
 void Engine::createSwapchain() {
 	
 	vkb::SwapchainBuilder swapchainBuilder(ctx->_chosenGPU, ctx->_device, ctx->_surface);
-	ctx->_swapchainFormat = vk::Format::eB8G8R8A8Unorm;
+	ctx->_swapchainFormat = vk::Format::eB8G8R8A8Srgb;
 	vk::SurfaceFormatKHR formatInfo{};
 	formatInfo.format = ctx->_swapchainFormat;
 	formatInfo.colorSpace = vk::ColorSpaceKHR::eSrgbNonlinear;

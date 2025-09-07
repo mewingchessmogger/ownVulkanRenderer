@@ -185,8 +185,17 @@ PipelineBuilder& PipelineBuilder::createPipeline()
 
 
 	pipeline=device.createGraphicsPipeline({}, createPipelineInfo).value;
+	
+	
+	device.destroyShaderModule(vertShader);
+	device.destroyShaderModule(fragShader);
+
 
 	pipelineCreated = true;
+
+	
+
+	
 	return *this;
 }
 

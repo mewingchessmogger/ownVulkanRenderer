@@ -82,20 +82,25 @@ void mouseHandler(Camera& c, float dT) {
 
 void inputHandler(Camera& camera, float dT, WindowContext* wtx) {
 
-	const float cameraSpeed = 1.0f * dT; // 
+	float cameraSpeed; // 
 
-	if (glfwGetKey(wtx->window, GLFW_KEY_E) == GLFW_PRESS) {//forwrad
+	cameraSpeed = 1.0f * dT; // 
+	if (glfwGetKey(wtx->window, GLFW_KEY_BACKSPACE) == GLFW_PRESS) {//forwrad
+		cameraSpeed = 3.0f * dT;
+	}
+
+	if (glfwGetKey(wtx->window, GLFW_KEY_C) == GLFW_PRESS) {//forwrad
 		camera.dir.y = 0.0f;
 		camera.eye += cameraSpeed * camera.dir;
 
 	}
-	if (glfwGetKey(wtx->window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS) {//BACK!!!!
+	if (glfwGetKey(wtx->window, GLFW_KEY_X) == GLFW_PRESS) {//BACK!!!!
 		camera.dir.y = 0.0f;
 		camera.eye -= cameraSpeed * camera.dir;
 	}
-	if (glfwGetKey(wtx->window, GLFW_KEY_LEFT_ALT) == GLFW_PRESS)
+	if (glfwGetKey(wtx->window, GLFW_KEY_Z) == GLFW_PRESS)
 		camera.eye -= glm::normalize(glm::cross(camera.dir, camera.up)) * cameraSpeed;//left
-	if (glfwGetKey(wtx->window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS)
+	if (glfwGetKey(wtx->window, GLFW_KEY_V) == GLFW_PRESS)
 		camera.eye += glm::normalize(glm::cross(camera.dir, camera.up)) * cameraSpeed;//right
 
 	if (glfwGetKey(wtx->window, GLFW_KEY_LEFT) == GLFW_PRESS)

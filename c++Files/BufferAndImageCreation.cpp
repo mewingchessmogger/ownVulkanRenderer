@@ -244,7 +244,7 @@ void Engine::createCubeImage() {
 	int faceWidth, faceHeight, texChannels;
 	
 	
-	
+	/*
 	cubeSides[0].texData = stbi_load("textures/cubemap/0084_east.png", &faceWidth, &faceHeight, &texChannels, STBI_rgb_alpha);
 	cubeSides[1].texData = stbi_load("textures/cubemap/0084_west.png", &faceWidth, &faceHeight, &texChannels, STBI_rgb_alpha);
 	
@@ -252,7 +252,32 @@ void Engine::createCubeImage() {
 	cubeSides[3].texData = stbi_load("textures/cubemap/0084_bottom.png", &faceWidth, &faceHeight, &texChannels, STBI_rgb_alpha);
 
 	cubeSides[4].texData = stbi_load("textures/cubemap/0084_north.png", &faceWidth, &faceHeight, &texChannels, STBI_rgb_alpha);
-	cubeSides[5].texData = stbi_load("textures/cubemap/0084_south.png", &faceWidth, &faceHeight, &texChannels, STBI_rgb_alpha);
+	cubeSides[5].texData = stbi_load("textures/cubemap/0084_south.png", &faceWidth, &faceHeight, &texChannels, STBI_rgb_alpha);*/
+
+
+	cubeSides[0].texData = stbi_load("textures/cubemap/prettyspace/right.png", &faceWidth, &faceHeight, &texChannels, STBI_rgb_alpha);
+	cubeSides[1].texData = stbi_load("textures/cubemap/prettyspace/left.png", &faceWidth, &faceHeight, &texChannels, STBI_rgb_alpha);
+
+	cubeSides[2].texData = stbi_load("textures/cubemap/prettyspace/top.png", &faceWidth, &faceHeight, &texChannels, STBI_rgb_alpha);
+	cubeSides[3].texData = stbi_load("textures/cubemap/prettyspace/bottom.png", &faceWidth, &faceHeight, &texChannels, STBI_rgb_alpha);
+
+	cubeSides[4].texData = stbi_load("textures/cubemap/prettyspace/front.png", &faceWidth, &faceHeight, &texChannels, STBI_rgb_alpha);
+	cubeSides[5].texData = stbi_load("textures/cubemap/prettyspace/back.png", &faceWidth, &faceHeight, &texChannels, STBI_rgb_alpha);
+
+
+
+
+	//cubeSides[0].texData = stbi_load("textures/cubemap/sea/right.jpg", &faceWidth, &faceHeight, &texChannels, STBI_rgb_alpha);
+	//cubeSides[1].texData = stbi_load("textures/cubemap/sea/left.jpg", &faceWidth, &faceHeight, &texChannels, STBI_rgb_alpha);
+
+	//cubeSides[2].texData = stbi_load("textures/cubemap/sea/top.jpg", &faceWidth, &faceHeight, &texChannels, STBI_rgb_alpha);
+	//cubeSides[3].texData = stbi_load("textures/cubemap/sea/bottom.jpg", &faceWidth, &faceHeight, &texChannels, STBI_rgb_alpha);
+
+	//cubeSides[4].texData = stbi_load("textures/cubemap/sea/front.jpg", &faceWidth, &faceHeight, &texChannels, STBI_rgb_alpha);
+	//cubeSides[5].texData = stbi_load("textures/cubemap/sea/back.jpg", &faceWidth, &faceHeight, &texChannels, STBI_rgb_alpha);
+
+	
+
 
 	vk::DeviceSize cubemapSize= faceWidth * faceHeight * 4 * 6; //4 is channels
 	vk::DeviceSize sideSize = cubemapSize / 6; //rounded down 
